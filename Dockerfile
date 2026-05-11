@@ -6,7 +6,7 @@
 FROM caddy:2-alpine
 
 # El HTML PRODUCTION es el output de inject_data.py — siempre el más reciente.
-COPY CEO_Advisors_CRM_PRODUCTION.html /usr/share/caddy/index.html
+COPY index.html /usr/share/caddy/index.html
 COPY Caddyfile /etc/caddy/Caddyfile
 
 # Caddy escucha en $PORT (lo expandirá el shell de Railway)

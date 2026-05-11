@@ -9,7 +9,7 @@ Usage:
 
 Lee CEO_Advisors_CRM_DataTemplate.xlsx y:
   - Ejecuta validación pre-flight (referential integrity + splits sum + duplicados).
-  - En modo seed: inyecta los datos como semilla en CEO_Advisors_CRM.html → CEO_Advisors_CRM_PRODUCTION.html
+  - En modo seed: inyecta los datos como semilla en CEO_Advisors_CRM.html → index.html
   - En modo merge: genera merge_patch.json con solo los IDs no presentes en el export del CRM.
 """
 
@@ -60,7 +60,7 @@ _v2_new = HERE / "CEO_Advisors_CRM_DataTemplate_v2.NEW.xlsx"
 _v2 = HERE / "CEO_Advisors_CRM_DataTemplate_v2.xlsx"
 TEMPLATE_XL = _v2_new if _v2_new.exists() else _v2
 CRM_HTML    = HERE / "CEO_Advisors_CRM.html"
-OUTPUT_HTML = HERE / "CEO_Advisors_CRM_PRODUCTION.html"
+OUTPUT_HTML = HERE / "index.html"
 MERGE_OUT   = HERE / "merge_patch.json"
 PUPILO_DOCS_DIR = "pupilo_docs"  # carpeta relativa al HTML donde viven los CVs
 

@@ -6,7 +6,7 @@ Schema v2026.05.1
 Toma un export JSON del CRM (botón "Exportar JSON") y:
   1. Actualiza CEO_Advisors_CRM_DataTemplate_v2.xlsx con los datos más recientes
      (match por ID; si no, fuzzy-match por nombre; si no, append como fila nueva).
-  2. Regenera CEO_Advisors_CRM_PRODUCTION.html ejecutando inject_data.py.
+  2. Regenera index.html ejecutando inject_data.py.
 
 Uso:
   py sync.py ceoadvisors_crm_export.json

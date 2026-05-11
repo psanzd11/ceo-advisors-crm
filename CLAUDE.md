@@ -9,7 +9,7 @@ Single-directory project. Key files:
 | File | Role |
 |---|---|
 | `CEO_Advisors_CRM.html` | Source — self-contained app (HTML + inline CSS + inline JS) |
-| `CEO_Advisors_CRM_PRODUCTION.html` | Deployment artifact — generated, never edit directly |
+| `index.html` | Deployment artifact — generated, never edit directly |
 | `CEO_Advisors_CRM_DataTemplate_v2.xlsx` | Excel template — fuente de verdad para los datos |
 | `inject_data.py` | Excel → HTML (lee plantilla, valida, escribe seedData) |
 | `sync.py` | JSON (export del CRM) → Excel + HTML (round-trip seamless) |
@@ -23,7 +23,7 @@ Single-directory project. Key files:
 **Caso A — Edita en Excel:**
 1. Abre `CEO_Advisors_CRM_DataTemplate_v2.xlsx`, edita, guarda y cierra.
 2. Doble-click en `crm.bat` → modo INJECT.
-3. Abre `CEO_Advisors_CRM_PRODUCTION.html`. Si pregunta "¿Recargar?" → Aceptar.
+3. Abre `index.html`. Si pregunta "¿Recargar?" → Aceptar.
 
 **Caso B — Edita dentro del CRM (browser):**
 1. Hace cambios en la app.
@@ -165,7 +165,7 @@ Reglas: (1) usar `assert` antes de cada `replace`. (2) `count=1` por defecto. (3
 3. **Para cada feature:** `Grep` función → `Read` función → decidir si batch o Edit puntual.
 4. **Batch script Python** para 3+ inserts independientes y bien delimitados; `Edit` puntual para inserts dentro de funciones complejas.
 5. **Verificación con script de checks** (`grep -c` de strings clave por cada feature).
-6. **Regenerar `_PRODUCTION.html`** con `python3 inject_data.py`.
+6. **Regenerar `index.html`** con `python3 inject_data.py`.
 7. **Actualizar CLAUDE.md** con lecciones nuevas y "cosas que NUNCA romper".
 8. **Retrospectiva**: qué funcionó, qué no.
 
@@ -425,7 +425,7 @@ F9 fue la **primera fase con el verify completo aplicado desde el inicio**:
 **Patrón validado de verify completo (copiar-pegar)**:
 ```python
 import subprocess
-html = open('CEO_Advisors_CRM_PRODUCTION.html').read()
+html = open('index.html').read()
 # 1. Closing
 assert html.rstrip().endswith('</html>'), 'no cierra con </html>'
 # 2. Boot
@@ -488,7 +488,7 @@ F12 era CSS-only (mobile media queries). Pero al verificar tras el Edit, el arch
 **Regla actualizada**:
 ```python
 # Verify completo (source + production)
-for f in ['CEO_Advisors_CRM.html', 'CEO_Advisors_CRM_PRODUCTION.html']:
+for f in ['CEO_Advisors_CRM.html', 'index.html']:
     html = open(f).read()
     assert html.rstrip().endswith('</html>'), f'{f} no cierra'
     # extraer JS y validar...

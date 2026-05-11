@@ -125,7 +125,7 @@ if !RC! NEQ 0 (
 
 echo ================================================================
 echo  ✓ Proceso completado.
-echo  Abre CEO_Advisors_CRM_PRODUCTION.html en tu navegador.
+echo  Abre index.html en tu navegador.
 echo  Si te pregunta "Hay datos nuevos. ¿Recargar?" → Aceptar.
 echo ================================================================
 echo.

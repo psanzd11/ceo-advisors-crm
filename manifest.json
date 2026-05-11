@@ -2,7 +2,7 @@
   "name": "CEO Advisors CRM",
   "short_name": "CEO CRM",
   "description": "Plataforma interna de M&A, wealth management y red de pupilos.",
-  "start_url": "./CEO_Advisors_CRM_PRODUCTION.html",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#1B4F8C",

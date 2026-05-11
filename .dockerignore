@@ -7,7 +7,7 @@
 # Permitir explícitamente lo que va al contenedor
 !Dockerfile
 !Caddyfile
-!CEO_Advisors_CRM_PRODUCTION.html
+!index.html
 
 # Backups, fuentes y scripts: no se suben (el deploy es sólo del HTML servido)
 *.bak*

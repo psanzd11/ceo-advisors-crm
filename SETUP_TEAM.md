@@ -13,7 +13,7 @@ El CRM es un único HTML autocontenido + scripts Python + carpeta de docs. Si po
 2. **Copiar el contenido actual** del CRM ahí. Estructura:
    ```
    CEO Advisors CRM/
-   ├── CEO_Advisors_CRM_PRODUCTION.html
+   ├── index.html
    ├── CEO_Advisors_CRM_DataTemplate_v2.xlsx
    ├── crm.bat
    ├── inject_data.py

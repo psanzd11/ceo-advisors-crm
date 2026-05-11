@@ -4,7 +4,7 @@
 const CACHE = 'ceoadvisors-crm-v2';
 const ASSETS = [
   './',
-  './CEO_Advisors_CRM_PRODUCTION.html',
+  './index.html',
   './manifest.json',
 ];
 
