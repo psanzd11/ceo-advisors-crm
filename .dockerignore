@@ -1,0 +1,19 @@
+# Excluye todo del build de Railway excepto lo mínimo necesario para servir el HTML.
+# Mantén actualizado si añades archivos nuevos al deploy.
+
+# Todo por defecto
+*
+
+# Permitir explícitamente lo que va al contenedor
+!Dockerfile
+!Caddyfile
+!CEO_Advisors_CRM_PRODUCTION.html
+
+# Backups, fuentes y scripts: no se suben (el deploy es sólo del HTML servido)
+*.bak*
+*.NEW.xlsx
+~$*.xlsx
+__pycache__/
+.git/
+.env*
+*.log

@@ -1,0 +1,16 @@
+# CEO Advisors CRM — config Caddy (Railway)
+# Escucha en el puerto que Railway asigna via $PORT, fallback 80.
+
+:{$PORT:80} {
+  root * /usr/share/caddy
+  file_server
+  encode gzip
+  # Cache: HTML 5min (para que cambios lleguen rápido tras redeploy)
+  header /index.html Cache-Control "public, max-age=300"
+  # CORS: permite que Supabase haga callbacks al redirect URL
+  header Access-Control-Allow-Origin "https://rtusnruywsmbbzejxooi.supabase.co"
+  # Security headers básicos
+  header X-Frame-Options "SAMEORIGIN"
+  header X-Content-Type-Options "nosniff"
+  header Referrer-Policy "strict-origin-when-cross-origin"
+}

@@ -1,0 +1,42 @@
+# ═══════════════════════════════════════════════════════════════════
+# CEO Advisors CRM — .gitignore
+# ═══════════════════════════════════════════════════════════════════
+
+# ── Credenciales y secretos ──────────────────────────────
+.env*
+!.env.example
+supabase_migrations/.env.supabase
+*service_role*
+sr.txt
+
+# ── Backups del HTML antes de cambios delicados ─────────
+*.bak*
+*.bak_pre_*
+
+# ── Office: lock files temporales (Word/Excel/PowerPoint) ─
+~$*
+*.NEW.xlsx
+
+# ── Datos sensibles ──────────────────────────────────────
+# CVs de pupilos: contienen datos personales reales
+pupilo_docs/
+# Exports JSON del CRM (pueden contener datos de clientes reales)
+processed_exports/
+ceoadvisors_crm_export*.json
+merge_patch.json
+conflicts.json
+
+# ── Archivos obsoletos pendientes de limpieza ────────────
+limpieza/
+
+# ── Python / scripts admin (sirven para tu workflow local) ──
+__pycache__/
+*.pyc
+*.pyo
+
+# ── Editor / OS ──────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

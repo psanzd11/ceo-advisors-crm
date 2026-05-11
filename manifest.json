@@ -1,0 +1,24 @@
+{
+  "name": "CEO Advisors CRM",
+  "short_name": "CEO CRM",
+  "description": "Plataforma interna de M&A, wealth management y red de pupilos.",
+  "start_url": "./CEO_Advisors_CRM_PRODUCTION.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1B4F8C",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxOTIgMTkyIj48cmVjdCB3aWR0aD0iMTkyIiBoZWlnaHQ9IjE5MiIgZmlsbD0iIzFCNEY4QyIgcng9IjI0Ii8+PHBhdGggZD0iTTE4IDE0NSBDIDU1IDc1LCAxMTUgNjQsIDE3OCA4OCBNMzAgMTU1IEMgNjUgMTE1LCAxMTAgMTAwLCAxNzMgMTEwIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjEyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIGZpbGw9Im5vbmUiLz48dGV4dCB4PSI5NiIgeT0iMTAwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSJ3aGl0ZSIgZm9udC1mYW1pbHk9InNlcmlmIiBmb250LXNpemU9IjQyIiBmb250LXdlaWdodD0iYm9sZCI+Q0VPPC90ZXh0Pjwvc3ZnPg==",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgZmlsbD0iIzFCNEY4QyIgcng9IjY0Ii8+PHBhdGggZD0iTTQ4IDM4NyBDIDE0NyAyMDAsIDMwNyAxNzAsIDQ3NCAyMzUgTTgwIDQxMyBDIDE3MyAzMDcsIDI5MyAyNjcsIDQ2MSAyOTQiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMzIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgZmlsbD0ibm9uZSIvPjx0ZXh0IHg9IjI1NiIgeT0iMjY1IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSJ3aGl0ZSIgZm9udC1mYW1pbHk9InNlcmlmIiBmb250LXNpemU9IjExMiIgZm9udC13ZWlnaHQ9ImJvbGQiPkNFTzwvdGV4dD48L3N2Zz4=",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
