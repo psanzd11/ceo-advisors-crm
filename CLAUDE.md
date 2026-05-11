@@ -671,3 +671,28 @@ delete from public.companies  where is_demo = true;
 - El `NS = UUID("00000000-0000-0000-0000-000000000001")` en `migrate_to_supabase.py` — si lo cambias, los UUIDs ya no coinciden y el upsert duplica todo. Anclar para siempre.
 - Los enums `TYPE_MAP/STAGE_MAP/ATYPE_MAP` en el script — son el contrato entre el HTML legacy y los enums Postgres. Si añades un nuevo deal_stage al HTML, añádelo aquí y a la migration que añada el valor al enum.
 - El script genera idempotencia POR `code`. Si un día decides que `code` deja de ser único (ej. dos `c1` distintos), el upsert empieza a pisarse.
+
+**Sub-fase 15.3 — COMPLETADA F15.3a+b+c (2026-05-11):**
+- **Hosting Railway**: `https://ceo-advisors-crm-production.up.railway.app` sirve `index.html` desde Dockerfile (Caddy escuchando `$PORT`). Repo GitHub conectado para deploy automático en push.
+- **F15.3a** Cliente Supabase: `<script supabase-js@2>` desde CDN + `window.sb = createClient(URL, PUBLISHABLE_KEY)` con `persistSession:true, detectSessionInUrl:true`. SUPABASE_URL/KEY inline (públicas por diseño).
+- **F15.3b** Storage adapter (lectura): `fetchFromSupabase()` async carga las 6 tablas, mapea snake_case (UUIDs) → camelCase (códigos `u1/c1/d1`) preservando compatibilidad con HTML legacy. `refreshFromSupabaseIfPossible()` orquesta cache-first: si Supabase responde escribe localStorage; si falla, muestra banner amarillo "Modo offline". Helpers `supaSetOfflineBanner`.
+- **F15.3c** Login swap: `doLogin` usa `sb.auth.signInWithPassword({email,password})`. **NO hay fallback PBKDF2** (decisión Pablo). Si falla, mensaje "Email o contraseña incorrectos. Si aún no aceptaste la invitación...". El lockout localStorage `LOCKOUT_LIMIT=5/LOCKOUT_MIN=15` se conserva.
+- **Boot auto-login**: si hay sesión Supabase activa (magic link redirige con token en URL, `detectSessionInUrl:true` la captura), el HTML hace auto-login matching por email contra `DB.consultants`.
+- **Supabase Auth config**: `site_url` y `uri_allow_list` apuntan a Railway URL (configurado vía Management API).
+- **Renombre**: `CEO_Advisors_CRM_PRODUCTION.html` → `index.html`. Todas las referencias actualizadas (Dockerfile, inject_data.py, sync.py, sw.js, manifest.json, crm.bat, SETUP_TEAM.md, CLAUDE.md, .dockerignore).
+
+**Lección F15.3 — mapeo bidireccional UUIDs ↔ códigos paga:**
+- Mantener `code` (u1, c1, d1) como id legacy en cliente, con UUID guardado en `_supaId` por fila, evitó refactor masivo del CRM. Los renderers siguen usando `DB.consultants.find(c=>c.id==='u1')` como antes.
+- El mapeo se hace SOLO en `fetchFromSupabase` con 4 Maps (`uMap/cMap/coMap/dMap`). En sentido contrario (cliente→Supabase) F15.3d hará el lookup inverso por `_supaId`.
+
+**Cosas que NUNCA romper (post F15.3):**
+- El cliente Supabase `window.sb` se crea SOLO si `window.supabase.createClient` está disponible. Si la CDN bloquea/falla, `sb=null` y el CRM no hace fetch — pero tampoco rompe (cache-first sigue trabajando con localStorage). NO quitar el check del `if(!sb)return`.
+- Las funciones `fetchFromSupabase/refreshFromSupabaseIfPossible/supaSetOfflineBanner` se insertan ANTES del Storage adapter (línea ~967 en source). Si las mueves después, el adapter Storage no tiene acceso al cliente al boot.
+- El mapeo Supabase→legacy preserva `_supaId` y `_isDemo` en CADA entidad. F15.3d (escritura) los necesitará para enviar updates al backend.
+- El `redirect_to` en magic links debe coincidir con `uri_allow_list` configurado en Supabase Auth. Si cambias la URL Railway, regenerar links con `--redirect-to` apuntando a la nueva.
+
+**Patrón validado F15.3 — un solo batch para 3 inserts grandes:**
+- Inserción 1: bloque de funciones Supabase (~50 líneas) antes del Storage adapter.
+- Reemplazo 2: `doLogin` entero (con `i = src.index(start_marker); j = src.index(end_marker, i)+len(end_marker); src = src[:i] + NEW + src[j:]`).
+- Reemplazo 3: boot section (OLD_BOOT → NEW_BOOT).
+- Todo en un único script Python con assert antes de cada cambio, aplicado a source + index.html, verificado con `node --check` + tail + grep markers.

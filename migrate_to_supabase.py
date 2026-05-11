@@ -26,7 +26,8 @@ AUTH_URL = f"{PROJECT_URL}/auth/v1"
 NS = uuid.UUID("00000000-0000-0000-0000-000000000001")  # namespace fijo para uuid5
 
 EMAIL_FIXES = {
-    'u2': 'rchavarria@ceoadvisors.com',  # typo corregido (era rcharvarria)
+    'u1': 'p.sanz.d11@gmail.com',         # email real de Pablo (no el alias @ceoadvisors)
+    'u2': 'rchavarria@ceoadvisors.com',   # typo corregido (era rcharvarria)
 }
 
 def code_to_uuid(code: str) -> str:

@@ -711,6 +711,9 @@
 <div class="modal-back" id="modalBack"><div class="modal" id="modal"></div></div>
 <div class="map-tooltip" id="mapTip"></div>
 
+<!-- Supabase JS client (F15.3a) — debe cargar antes del script principal -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <script>
 /* ──────────── constantes ──────────── */
 const DEAL_TYPES=[
@@ -956,6 +959,87 @@ function seedPupilos(){
     {id:'p9',name:'Rafael Cortez',email:'rafael.cortez@ceibs.edu',university:'CEIBS',program:'MBA',startDate:mAhead(3,15),endDate:mAhead(8,15),mentor:'u2',region:'LATAM-Asia',notes:'Doble cobertura LATAM-Asia. Habla mandarín.'},
     {id:'p10',name:'Olivia Hartmann',email:'olivia.hartmann@lbs.ac.uk',university:'London Business School',program:'MFin',startDate:mAhead(5,1),endDate:mAhead(11,1),mentor:'u3',region:'EMEA',notes:'Internship largo (6 meses). Posible conversión.'},
   ];
+}
+
+/* ──────────── 2.0 Supabase client (F15.3a) ──────────────────────────
+   Cliente JS. Credenciales públicas por diseño (publishable key).
+   La seguridad real está en las RLS policies del backend.
+   window.sb expuesto para inspección desde DevTools. */
+const SUPABASE_URL = 'https://rtusnruywsmbbzejxooi.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_UDs1RIV3J1WfSf31_XMUmQ_ApQS1G5H';
+const sb = (window.supabase && window.supabase.createClient)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+    })
+  : null;
+window.sb = sb;
+if (!sb) console.warn('[Supabase] cliente no inicializado — CDN supabase-js no cargó o blocked');
+
+/* ──────────── 2.0.5 Supabase fetch + map (F15.3b) ─────────────
+   Carga las tablas desde Supabase y mapea snake_case (UUIDs) → camelCase
+   (códigos legacy u1/c1/d1) para que el resto del CRM siga funcionando.
+   Cache-first: si Supabase falla, mantenemos la cache de localStorage. */
+
+function supaSetOfflineBanner(visible, msg){
+  let bn=document.getElementById('supaOfflineBanner');
+  if(!visible){if(bn)bn.remove();return}
+  if(!bn){
+    bn=document.createElement('div');
+    bn.id='supaOfflineBanner';
+    bn.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9998;background:#fef3c7;color:#92400e;padding:8px 16px;text-align:center;font-size:13px;border-bottom:1px solid #f59e0b';
+    document.body.appendChild(bn);
+  }
+  bn.textContent=msg||'⚠ Modo offline — usando cache local. Cambios se sincronizarán al volver la red.';
+}
+
+async function fetchFromSupabase(){
+  if(!sb)throw new Error('Cliente Supabase no inicializado');
+  const {data:{session}}=await sb.auth.getSession();
+  if(!session)return null;
+  const [c,cl,co,d,a,p]=await Promise.all([
+    sb.from('consultants').select('*'),
+    sb.from('clients').select('*'),
+    sb.from('companies').select('*'),
+    sb.from('deals').select('*'),
+    sb.from('activities').select('*'),
+    sb.from('pupilos').select('*'),
+  ]);
+  const errs=[c,cl,co,d,a,p].filter(r=>r.error);
+  if(errs.length)throw new Error('Supabase fetch: '+errs[0].error.message);
+  const uMap=new Map(c.data.map(x=>[x.id,x.code]));
+  const cMap=new Map(cl.data.map(x=>[x.id,x.code]));
+  const coMap=new Map(co.data.map(x=>[x.id,x.code]));
+  const dMap=new Map(d.data.map(x=>[x.id,x.code]));
+  return {
+    consultants:c.data.map(x=>({id:x.code,_supaId:x.id,name:x.name,role:x.role,isCEO:x.is_ceo,isAdmin:x.is_admin,email:x.email,region:x.region,bio:x.bio})),
+    clients:cl.data.map(x=>({id:x.code,_supaId:x.id,_isDemo:x.is_demo,name:x.name,email:x.email,phone:x.phone,country:x.country,city:x.city,netWorth:Number(x.net_worth)||0,source:x.source,tier:x.tier,notes:x.notes})),
+    companies:co.data.map(x=>({id:x.code,_supaId:x.id,_isDemo:x.is_demo,name:x.name,industry:x.industry,country:x.country,employees:x.employees,netWorth:Number(x.net_worth)||0,website:x.website,clientIds:(x.client_ids||[]).map(u=>cMap.get(u)).filter(Boolean),notes:x.notes})),
+    deals:d.data.map(x=>({id:x.code,_supaId:x.id,_isDemo:x.is_demo,title:x.title,clientId:cMap.get(x.client_id)||null,companyId:coMap.get(x.company_id)||null,type:x.type,stage:x.stage,amount:Number(x.amount)||0,closeDate:x.close_date,splits:(x.splits||[]).map(s=>({u:uMap.get(s.u)||s.u,pct:s.pct})),notes:x.notes,createdAt:x.created_at?x.created_at.slice(0,10):'',comments:[],stageHistory:[{stage:x.stage,ts:x.created_at?x.created_at.slice(0,10):''}]})),
+    activities:a.data.map(x=>({id:x.code,_supaId:x.id,_isDemo:x.is_demo,type:x.type,date:x.date,clientId:cMap.get(x.client_id)||null,companyId:coMap.get(x.company_id)||null,dealId:dMap.get(x.deal_id)||null,title:x.title,notes:x.notes,done:!!x.done,createdBy:uMap.get(x.created_by)||null})),
+    pupilos:p.data.map(x=>({id:x.code,_supaId:x.id,name:x.name,email:x.email,university:x.university,program:x.program,startDate:x.start_date,endDate:x.end_date,mentor:x.mentor,region:x.region,consultantId:x.consultant_id?uMap.get(x.consultant_id):null,leftCompany:x.left_company,leftRole:x.left_role,notes:x.notes,docs:x.docs||[]})),
+    _fromSupabase:true,_supaFetchedAt:new Date().toISOString(),
+  };
+}
+
+async function refreshFromSupabaseIfPossible(){
+  if(!sb)return;
+  try{
+    const fresh=await fetchFromSupabase();
+    if(!fresh)return;
+    fresh.currentUserId=DB.currentUserId;
+    fresh.audit=DB.audit||[];
+    fresh.notifications=DB.notifications||[];
+    fresh.winLossReasons=DB.winLossReasons||['Pricing','Timing','Competitor','Fit del producto','Cambio decisor','Presupuesto','Otro'];
+    applyMigrations(fresh);
+    DB=fresh;
+    Storage.write(JSON.stringify(DB));
+    supaSetOfflineBanner(false);
+    try{render()}catch(e){console.warn('render post-refresh:',e)}
+    console.log('[Supabase] datos refrescados ('+(fresh.clients?.length||0)+' clientes, '+(fresh.deals?.length||0)+' deals)');
+  }catch(e){
+    console.warn('[Supabase] fetch falló, usando cache local:',e.message);
+    supaSetOfflineBanner(true);
+  }
 }
 
 /* ──────────── 2.1 Storage adapter (preparado para Supabase futura) ──────
@@ -1489,31 +1573,35 @@ async function doLogin(ev){
   const pass=($('#loginPass').value||'');
   const lk=loginFailsFor(email);
   if(lk.until&&Date.now()<lk.until){const min=Math.ceil((lk.until-Date.now())/60000);state.authError=`Cuenta bloqueada tras ${LOCKOUT_LIMIT} intentos. Intenta de nuevo en ${min} min.`;render();return false}
-  const u=DB.consultants.find(c=>(c.email||'').toLowerCase()===email);
-  if(!u){state.authError='No existe una cuenta con ese email.';render();return false}
-  let ok=false;
-  try{ok=await verifyPassword(u, pass)}catch(e){console.error(e)}
-  if(!ok){
+  /* F15.3c: Supabase Auth signInWithPassword (sin fallback PBKDF2) */
+  if(!sb){state.authError='Cliente Supabase no disponible. Revisa tu conexión.';render();return false}
+  let supaResult;
+  try{supaResult=await sb.auth.signInWithPassword({email,password:pass})}
+  catch(e){state.authError='Error de red: '+e.message;render();return false}
+  if(supaResult.error){
     const r=loginFailRecord(email);
     if(r.until){state.authError=`Has fallado ${LOCKOUT_LIMIT} veces. Cuenta bloqueada por ${LOCKOUT_MIN} minutos.`}
-    else if(r.count>=3){state.authError=`Contraseña incorrecta. ${LOCKOUT_LIMIT-r.count} intento(s) antes de bloqueo.`}
-    else{state.authError='Contraseña incorrecta.'}
+    else if(r.count>=3){state.authError=`Credenciales incorrectas. ${LOCKOUT_LIMIT-r.count} intento(s) antes de bloqueo.`}
+    else{state.authError='Email o contraseña incorrectos. Si aún no aceptaste la invitación por email, pide un enlace nuevo al admin.'}
     render();return false;
   }
   loginFailClear(email);
+  state.authError='';
+  /* Refrescar datos desde Supabase ahora que tenemos sesión */
+  try{await refreshFromSupabaseIfPossible()}catch(e){console.warn('refresh post-login:',e)}
+  const u=DB.consultants.find(c=>(c.email||'').toLowerCase()===email);
+  if(!u){
+    state.authError='Sesión válida pero sin perfil en el CRM. Contacta a un admin.';
+    try{await sb.auth.signOut()}catch(_){}
+    render();return false;
+  }
   state.authed=true;
   state.authedUserId=u.id;
-  state.authError='';
   DB.currentUserId=u.id;
   saveDB();
   loadUserPrefs();
   const ov=document.getElementById('loginOverlay');if(ov)ov.remove();
   renderUserSwitcher();
-  /* Si la password es débil/demo → forzar cambio antes de continuar */
-  if(u.passwordMustChange){
-    forceChangePasswordModal(u);
-    return false;
-  }
   setView('today');
   return false;
 }
@@ -6837,6 +6925,27 @@ state.authed=false;
 state.view='today';
 renderUserSwitcher();
 render();
+/* F15.3b/c: auto-login si Supabase tiene sesión activa (magic link o session persistida) */
+(async function bootSupabase(){
+  if(!sb)return;
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    if(!session){supaSetOfflineBanner(false);return}
+    await refreshFromSupabaseIfPossible();
+    const email=(session.user.email||'').toLowerCase();
+    const u=DB.consultants.find(c=>(c.email||'').toLowerCase()===email);
+    if(u){
+      state.authed=true;
+      state.authedUserId=u.id;
+      DB.currentUserId=u.id;
+      Storage.write(JSON.stringify(DB));
+      loadUserPrefs();
+      const ov=document.getElementById('loginOverlay');if(ov)ov.remove();
+      renderUserSwitcher();
+      setView('today');
+    }
+  }catch(e){console.warn('boot supabase:',e)}
+})();
 </script>
 </body>
 </html>
