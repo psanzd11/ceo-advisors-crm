@@ -669,6 +669,9 @@
         <button class="icon-btn" id="btnDensity" title="Modo compacto/normal" onclick="toggleDensity()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
         </button>
+        <button class="icon-btn" id="btnHideDemo" title="Mostrar/Ocultar datos demo" onclick="toggleHideDemo()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
         <div class="notif-wrap">
           <button class="icon-btn" id="btnNotif" title="Notificaciones" onclick="toggleNotifs()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
@@ -854,12 +857,12 @@ async function fetchFromSupabase(){
   const coMap=new Map(co.data.map(x=>[x.id,x.code]));
   const dMap=new Map(d.data.map(x=>[x.id,x.code]));
   return {
-    consultants:c.data.map(x=>({id:x.code,_supaId:x.id,name:x.name,role:x.role,isCEO:x.is_ceo,isAdmin:x.is_admin,email:x.email,region:x.region,bio:x.bio})),
-    clients:cl.data.map(x=>({id:x.code,_supaId:x.id,_isDemo:x.is_demo,name:x.name,email:x.email,phone:x.phone,country:x.country,city:x.city,netWorth:Number(x.net_worth)||0,source:x.source,tier:x.tier,notes:x.notes})),
-    companies:co.data.map(x=>({id:x.code,_supaId:x.id,_isDemo:x.is_demo,name:x.name,industry:x.industry,country:x.country,employees:x.employees,netWorth:Number(x.net_worth)||0,website:x.website,clientIds:(x.client_ids||[]).map(u=>cMap.get(u)).filter(Boolean),notes:x.notes})),
-    deals:d.data.map(x=>({id:x.code,_supaId:x.id,_isDemo:x.is_demo,title:x.title,clientId:cMap.get(x.client_id)||null,companyId:coMap.get(x.company_id)||null,type:x.type,stage:x.stage,amount:Number(x.amount)||0,closeDate:x.close_date,splits:(x.splits||[]).map(s=>({u:uMap.get(s.u)||s.u,pct:s.pct})),notes:x.notes,createdAt:x.created_at?x.created_at.slice(0,10):'',comments:[],stageHistory:[{stage:x.stage,ts:x.created_at?x.created_at.slice(0,10):''}]})),
-    activities:a.data.map(x=>({id:x.code,_supaId:x.id,_isDemo:x.is_demo,type:x.type,date:x.date,clientId:cMap.get(x.client_id)||null,companyId:coMap.get(x.company_id)||null,dealId:dMap.get(x.deal_id)||null,title:x.title,notes:x.notes,done:!!x.done,createdBy:uMap.get(x.created_by)||null})),
-    pupilos:p.data.map(x=>({id:x.code,_supaId:x.id,name:x.name,email:x.email,university:x.university,program:x.program,startDate:x.start_date,endDate:x.end_date,mentor:x.mentor,region:x.region,consultantId:x.consultant_id?uMap.get(x.consultant_id):null,leftCompany:x.left_company,leftRole:x.left_role,notes:x.notes,docs:x.docs||[]})),
+    consultants:c.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,name:x.name,role:x.role,isCEO:x.is_ceo,isAdmin:x.is_admin,email:x.email,region:x.region,bio:x.bio,prefs:x.prefs||{}})),
+    clients:cl.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,_isDemo:x.is_demo,name:x.name,email:x.email,phone:x.phone,country:x.country,city:x.city,netWorth:Number(x.net_worth)||0,source:x.source,tier:x.tier,notes:x.notes,comments:x.comments||[],tags:x.tags||[]})),
+    companies:co.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,_isDemo:x.is_demo,name:x.name,industry:x.industry,country:x.country,employees:x.employees,netWorth:Number(x.net_worth)||0,website:x.website,clientIds:(x.client_ids||[]).map(u=>cMap.get(u)).filter(Boolean),notes:x.notes,comments:x.comments||[]})),
+    deals:d.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,_isDemo:x.is_demo,title:x.title,clientId:cMap.get(x.client_id)||null,companyId:coMap.get(x.company_id)||null,type:x.type,stage:x.stage,amount:Number(x.amount)||0,closeDate:x.close_date,splits:(x.splits||[]).map(s=>({u:uMap.get(s.u)||s.u,pct:s.pct})),notes:x.notes,createdAt:x.created_at?x.created_at.slice(0,10):'',comments:x.comments||[],stageHistory:(x.stage_history&&x.stage_history.length)?x.stage_history:[{stage:x.stage,ts:x.created_at?x.created_at.slice(0,10):''}],lostReason:x.lost_reason||null,wonAt:x.won_at||null,lostAt:x.lost_at||null,tags:x.tags||[]})),
+    activities:a.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,_isDemo:x.is_demo,type:x.type,date:x.date,clientId:cMap.get(x.client_id)||null,companyId:coMap.get(x.company_id)||null,dealId:dMap.get(x.deal_id)||null,title:x.title,notes:x.notes,done:!!x.done,createdBy:uMap.get(x.created_by)||null,assignedTo:uMap.get(x.assigned_to)||null})),
+    pupilos:p.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,name:x.name,email:x.email,university:x.university,program:x.program,startDate:x.start_date,endDate:x.end_date,mentor:x.mentor,region:x.region,consultantId:x.consultant_id?uMap.get(x.consultant_id):null,leftCompany:x.left_company,leftRole:x.left_role,notes:x.notes,docs:x.docs||[]})),
     _fromSupabase:true,_supaFetchedAt:new Date().toISOString(),
   };
 }
@@ -876,13 +879,378 @@ async function refreshFromSupabaseIfPossible(){
     applyMigrations(fresh);
     DB=fresh;
     Storage.write(JSON.stringify(DB));
+    /* F15.4d: cargar notifs desde Supabase y mergear con locales (las locales sin _supaNotifId se pueden migrar) */
+    try{
+      const remoteNotifs = await _supaLoadNotifications();
+      if(remoteNotifs.length){
+        // mergear: si una local tiene mismo id que una remote, preservar el local (mas reciente UX)
+        const localIds = new Set((DB.notifications||[]).map(n=>n.id));
+        const newOnes = remoteNotifs.filter(n => !localIds.has(n.id));
+        DB.notifications = (newOnes).concat(DB.notifications||[]);
+        if(DB.notifications.length>500) DB.notifications.length=500;
+      }
+    }catch(e){ console.warn('load notifs:',e) }
+    try{ _supaUpdateSnapshot() }catch(e){ console.warn('snapshot:',e) }
     supaSetOfflineBanner(false);
+    /* F15.4e: suscribir Realtime para updates live */
+    try{ subscribeRealtime() }catch(e){ console.warn('realtime:',e) }
     try{render()}catch(e){console.warn('render post-refresh:',e)}
     console.log('[Supabase] datos refrescados ('+(fresh.clients?.length||0)+' clientes, '+(fresh.deals?.length||0)+' deals)');
   }catch(e){
     console.warn('[Supabase] fetch falló, usando cache local:',e.message);
     supaSetOfflineBanner(true);
   }
+}
+
+/* ──────────── 2.0 Escritura a Supabase (F15.3d) ──────────────
+   Estrategia: debounce 500ms tras saveDB(). Diff por snapshot (sólo se envía lo que cambió).
+   Cola offline persistida en localStorage si Supabase no responde o falla.
+   Deletes detectados comparando snapshot vs estado actual. */
+const SUPA_QUEUE_KEY = 'ceoadvisors_supa_queue_v1';
+const SUPA_SNAPSHOT_KEY = 'ceoadvisors_supa_snapshot_v2';
+let _supaFlushTimer = null;
+let _supaFlushInflight = false;
+
+function _supaResolveUuid(type, code){
+  if(!code) return null;
+  const list = ({u:DB.consultants,c:DB.clients,co:DB.companies,d:DB.deals,a:DB.activities,p:DB.pupilos})[type] || [];
+  const x = list.find(r => r && r.id === code);
+  return (x && x._supaId) || null;
+}
+
+function _supaEnsureSupaId(x){
+  if(!x._supaId){
+    try{ x._supaId = (crypto.randomUUID ? crypto.randomUUID() : ('xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,ch=>{const r=Math.random()*16|0;return (ch==='x'?r:(r&0x3|0x8)).toString(16)}))); }
+    catch(e){ x._supaId = 'fallback-'+Date.now()+'-'+Math.random().toString(36).slice(2,10); }
+  }
+  return x._supaId;
+}
+
+function _supaToRow(table, x){
+  const id = _supaEnsureSupaId(x);
+  const nowIso = new Date().toISOString();
+  const base = { id, code: x.id, updated_at: x._supaUpdatedAt || nowIso };
+  // Enums válidos (F15.4a)
+  const DEAL_TYPES  = ['mandate','retainer','equity','board','advisor','other'];
+  const DEAL_STAGES = ['lead','contact','proposal','negotiation','won','lost','on-hold'];
+  const ACT_TYPES   = ['meeting','call','email','note','task','other'];
+  const TIERS       = ['A','B','C','D'];
+  if(table==='consultants') return Object.assign(base, {
+    name:x.name||'', role:x.role||'', is_ceo:!!x.isCEO, is_admin:!!x.isAdmin,
+    email:x.email||'', region:x.region||'', bio:x.bio||'',
+    prefs: (x.prefs && typeof x.prefs==='object') ? x.prefs : {}
+  });
+  if(table==='clients') return Object.assign(base, {
+    is_demo:!!x._isDemo, name:x.name||'', email:x.email||'', phone:x.phone||'',
+    country:x.country||'', city:x.city||'', net_worth:Number(x.netWorth)||0,
+    source:x.source||'', tier:(TIERS.includes(x.tier)?x.tier:null),
+    notes:x.notes||'',
+    comments: Array.isArray(x.comments)?x.comments:[],
+    tags: Array.isArray(x.tags)?x.tags:[]
+  });
+  if(table==='companies') return Object.assign(base, {
+    is_demo:!!x._isDemo, name:x.name||'', industry:x.industry||'',
+    country:x.country||'', employees:Number(x.employees)||0,
+    net_worth:Number(x.netWorth)||0, website:x.website||'',
+    client_ids:(x.clientIds||[]).map(c=>_supaResolveUuid('c',c)).filter(Boolean),
+    notes:x.notes||'',
+    comments: Array.isArray(x.comments)?x.comments:[]
+  });
+  if(table==='deals'){
+    const type  = DEAL_TYPES.includes(x.type)  ? x.type  : 'mandate';
+    const stage = DEAL_STAGES.includes(x.stage)? x.stage : 'lead';
+    if(x.type && !DEAL_TYPES.includes(x.type))   console.warn('[supa] deal type inválido descartado:', x.type, '→ mandate');
+    if(x.stage && !DEAL_STAGES.includes(x.stage)) console.warn('[supa] deal stage inválido descartado:', x.stage, '→ lead');
+    return Object.assign(base, {
+      is_demo:!!x._isDemo, title:x.title||'',
+      client_id:_supaResolveUuid('c',x.clientId),
+      company_id:_supaResolveUuid('co',x.companyId),
+      type, stage, amount:Number(x.amount)||0,
+      close_date:x.closeDate||null,
+      splits:(x.splits||[]).map(s=>({u:_supaResolveUuid('u',s.u), pct:Number(s.pct)||0})).filter(s=>s.u),
+      notes:x.notes||'',
+      comments: Array.isArray(x.comments)?x.comments:[],
+      stage_history: Array.isArray(x.stageHistory)?x.stageHistory:[],
+      lost_reason: x.lostReason||null,
+      won_at: x.wonAt||null,
+      lost_at: x.lostAt||null,
+      tags: Array.isArray(x.tags)?x.tags:[]
+    });
+  }
+  if(table==='activities'){
+    const type = ACT_TYPES.includes(x.type) ? x.type : 'note';
+    if(x.type && !ACT_TYPES.includes(x.type)) console.warn('[supa] activity type inválido descartado:', x.type, '→ note');
+    return Object.assign(base, {
+      is_demo:!!x._isDemo, type, date:x.date||null,
+      client_id:_supaResolveUuid('c',x.clientId),
+      company_id:_supaResolveUuid('co',x.companyId),
+      deal_id:_supaResolveUuid('d',x.dealId),
+      title:x.title||'', notes:x.notes||'', done:!!x.done,
+      created_by:_supaResolveUuid('u',x.createdBy),
+      assigned_to:_supaResolveUuid('u',x.assignedTo)
+    });
+  }
+  if(table==='pupilos') return Object.assign(base, {
+    name:x.name||'', email:x.email||'', university:x.university||'',
+    program:x.program||'', start_date:x.startDate||null, end_date:x.endDate||null,
+    mentor:x.mentor||'', region:x.region||'',
+    consultant_id:_supaResolveUuid('u',x.consultantId),
+    left_company:x.leftCompany||'', left_role:x.leftRole||'',
+    notes:x.notes||'', docs:Array.isArray(x.docs)?x.docs:[]
+  });
+  return null;
+}
+
+function _supaSignature(table, x){
+  const r = _supaToRow(table, x);
+  if(!r) return '';
+  return JSON.stringify(r);
+}
+
+function _supaLoadSnapshot(){
+  try{ return JSON.parse(localStorage.getItem(SUPA_SNAPSHOT_KEY) || '{}') }catch(e){ return {} }
+}
+function _supaSaveSnapshot(snap){
+  try{ localStorage.setItem(SUPA_SNAPSHOT_KEY, JSON.stringify(snap)) }catch(e){}
+}
+function _supaUpdateSnapshot(){
+  const tables = {consultants:DB.consultants, clients:DB.clients, companies:DB.companies, deals:DB.deals, activities:DB.activities, pupilos:DB.pupilos};
+  const snap = {};
+  for(const [t, rows] of Object.entries(tables)){
+    if(!Array.isArray(rows)) continue;
+    snap[t] = {};
+    rows.forEach(r => {
+      if(!r || !r.id) return;
+      snap[t][r.id] = { sig: _supaSignature(t, r), supaId: r._supaId || null };
+    });
+  }
+  _supaSaveSnapshot(snap);
+}
+
+function _supaComputeDirty(){
+  const tables = {consultants:DB.consultants, clients:DB.clients, companies:DB.companies, deals:DB.deals, activities:DB.activities, pupilos:DB.pupilos};
+  const snap = _supaLoadSnapshot();
+  const dirty = {};
+  for(const [t, rows] of Object.entries(tables)){
+    if(!Array.isArray(rows)) continue;
+    const prev = snap[t] || {};
+    const changed = rows.filter(r => r && r.id && _supaSignature(t, r) !== (prev[r.id] && prev[r.id].sig));
+    if(changed.length) dirty[t] = changed;
+  }
+  return dirty;
+}
+
+function _supaComputeDeletes(){
+  const tables = {consultants:DB.consultants, clients:DB.clients, companies:DB.companies, deals:DB.deals, activities:DB.activities, pupilos:DB.pupilos};
+  const snap = _supaLoadSnapshot();
+  const out = {};
+  for(const [t, rows] of Object.entries(tables)){
+    if(!Array.isArray(rows)) continue;
+    const currentCodes = new Set(rows.map(r => r && r.id).filter(Boolean));
+    const prev = snap[t] || {};
+    const missing = Object.entries(prev)
+      .filter(([code, info]) => !currentCodes.has(code) && info && info.supaId)
+      .map(([code, info]) => info.supaId);
+    if(missing.length) out[t] = missing;
+  }
+  return out;
+}
+
+function _supaLoadQueue(){
+  try{
+    const q = JSON.parse(localStorage.getItem(SUPA_QUEUE_KEY) || '{}');
+    if(!q.upserts) q.upserts = {};
+    if(!q.deletes) q.deletes = {};
+    return q;
+  }catch(e){ return {upserts:{}, deletes:{}} }
+}
+function _supaSaveQueue(q){
+  try{ localStorage.setItem(SUPA_QUEUE_KEY, JSON.stringify(q)) }catch(e){}
+}
+function _supaQueueMerge(dirty, deletes){
+  const q = _supaLoadQueue();
+  for(const [t, rows] of Object.entries(dirty || {})){
+    if(!q.upserts[t]) q.upserts[t] = {};
+    rows.forEach(r => { if(r && r.id) q.upserts[t][r.id] = r; });
+  }
+  for(const [t, ids] of Object.entries(deletes || {})){
+    if(!q.deletes[t]) q.deletes[t] = [];
+    ids.forEach(id => { if(!q.deletes[t].includes(id)) q.deletes[t].push(id); });
+  }
+  _supaSaveQueue(q);
+}
+function _supaQueueCount(q){
+  q = q || _supaLoadQueue();
+  let n = 0;
+  for(const t in q.upserts) n += Object.keys(q.upserts[t] || {}).length;
+  for(const t in q.deletes) n += (q.deletes[t] || []).length;
+  return n;
+}
+
+async function _supaUpsertTable(table, rows){
+  if(!window.sb) throw new Error('no client');
+  const supaRows = rows.map(r => _supaToRow(table, r)).filter(Boolean);
+  if(!supaRows.length) return { sent:0, applied:0, rejected:[] };
+  // F15.4f: RPC que sólo aplica si excluded.updated_at >= existing.updated_at
+  const rpcName = 'upsert_'+table+'_if_newer';
+  const { data, error } = await sb.rpc(rpcName, { rows: supaRows });
+  if(error) throw error;
+  const appliedIds = new Set((data||[]).map(x => typeof x==='string'?x:x.id));
+  const rejected = supaRows.filter(r => !appliedIds.has(r.id));
+  if(rejected.length){
+    console.warn('[supa] '+rejected.length+' filas rechazadas en '+table+' (server más reciente)');
+    _supaQueueConflicts(table, rejected, rows);
+  }
+  return { sent: supaRows.length, applied: appliedIds.size, rejected };
+}
+
+// F15.4f: cola y modal de conflictos
+const SUPA_CONFLICTS_KEY = 'ceoadvisors_supa_conflicts_v1';
+function _supaQueueConflicts(table, rejectedRows, localRows){
+  try{
+    const cur = JSON.parse(localStorage.getItem(SUPA_CONFLICTS_KEY)||'{}');
+    if(!cur[table]) cur[table] = [];
+    rejectedRows.forEach(r => {
+      const localRow = localRows.find(lr => lr._supaId===r.id);
+      cur[table].push({ id:r.id, code:r.code, ts:Date.now(), local:localRow });
+    });
+    localStorage.setItem(SUPA_CONFLICTS_KEY, JSON.stringify(cur));
+  }catch(e){ console.warn('queueConflicts:',e) }
+  setTimeout(()=>showConflictModalIfAny(),100);
+}
+function showConflictModalIfAny(){
+  let bag = {};
+  try{ bag = JSON.parse(localStorage.getItem(SUPA_CONFLICTS_KEY)||'{}') }catch(e){}
+  const total = Object.values(bag).reduce((a,b)=>a+(Array.isArray(b)?b.length:0),0);
+  if(!total) return;
+  if(document.getElementById('supaConflictModal')) return;
+  const ov = document.createElement('div');
+  ov.id = 'supaConflictModal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px';
+  const list = Object.entries(bag).flatMap(([t,arr])=>(arr||[]).map(c=>'<li>'+t+' · '+c.code+'</li>')).slice(0,8).join('');
+  ov.innerHTML = `<div style="background:var(--surface);border-radius:12px;max-width:540px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3);border:1px solid var(--line)">
+    <h3 style="margin:0 0 8px;color:var(--ink)">⚠ Conflicto de edición</h3>
+    <div class="muted" style="margin-bottom:14px">${total} cambio${total===1?'':'s'} no se aplicó${total===1?'':'aron'}: otro usuario editó ${total===1?'esa fila':'esas filas'} después de ti.</div>
+    <ul style="font-size:12.5px;color:var(--ink-2);margin:0 0 14px;padding-left:20px">${list}</ul>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn outline" onclick="resolveConflictReload()">Recargar (pierdo mi cambio)</button>
+      <button class="btn primary" onclick="resolveConflictForce()">Forzar (piso al otro)</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+async function resolveConflictReload(){
+  localStorage.removeItem(SUPA_CONFLICTS_KEY);
+  document.getElementById('supaConflictModal')?.remove();
+  await refreshFromSupabaseIfPossible();
+}
+async function resolveConflictForce(){
+  let bag = {};
+  try{ bag = JSON.parse(localStorage.getItem(SUPA_CONFLICTS_KEY)||'{}') }catch(e){}
+  localStorage.removeItem(SUPA_CONFLICTS_KEY);
+  document.getElementById('supaConflictModal')?.remove();
+  // Re-bumpear updated_at para que excluded > existing
+  for(const [t, arr] of Object.entries(bag)){
+    for(const c of (arr||[])){
+      const list = ({consultants:DB.consultants,clients:DB.clients,companies:DB.companies,deals:DB.deals,activities:DB.activities,pupilos:DB.pupilos})[t]||[];
+      const row = list.find(r => r._supaId===c.id);
+      if(row) row._supaUpdatedAt = new Date(Date.now()+60000).toISOString(); // +60s future
+    }
+  }
+  saveDB();
+  await flushSupabase();
+}
+async function _supaDeleteIds(table, ids){
+  if(!window.sb) throw new Error('no client');
+  if(!ids || !ids.length) return 0;
+  const { error } = await sb.from(table).delete().in('id', ids);
+  if(error) throw error;
+  return ids.length;
+}
+
+function supaSetSyncBanner(state, count){
+  if(state==='ok'){ supaSetOfflineBanner(false); return; }
+  if(state==='syncing'){ supaSetOfflineBanner(true, `↻ Sincronizando ${count} cambio${count===1?'':'s'}…`); return; }
+  if(state==='queued'){ supaSetOfflineBanner(true, `⚠ ${count} cambio${count===1?'':'s'} pendiente${count===1?'':'s'} — reintento al recargar`); return; }
+  if(state==='offline'){ supaSetOfflineBanner(true, '⚠ Sin conexión — los cambios se guardan localmente'); return; }
+}
+
+async function flushSupabase(){
+  if(_supaFlushInflight) return { skipped:true };
+  _supaFlushInflight = true;
+  try{
+    const dirty = _supaComputeDirty();
+    const deletes = _supaComputeDeletes();
+    if(Object.keys(dirty).length || Object.keys(deletes).length){
+      _supaQueueMerge(dirty, deletes);
+    }
+    const q = _supaLoadQueue();
+    const total = _supaQueueCount(q);
+    if(!total){ supaSetSyncBanner('ok'); return { sent:0 }; }
+    if(!window.sb || !navigator.onLine){ supaSetSyncBanner('queued', total); return { queued:total }; }
+
+    supaSetSyncBanner('syncing', total);
+
+    // F15.4a: continue tras error en cada tabla, no break
+    const errors = [];
+    for(const t of ['consultants','clients','companies','deals','activities','pupilos']){
+      const byId = q.upserts[t] || {};
+      const rows = Object.values(byId);
+      if(!rows.length) continue;
+      try{
+        const res = await _supaUpsertTable(t, rows);
+        // limpiar SÓLO las filas aplicadas; las rechazadas quedan en la cola (F15.4f las gestiona)
+        const appliedCodes = new Set();
+        if(res && res.rejected){
+          const rejectedCodes = new Set(res.rejected.map(r=>r.code));
+          rows.forEach(r => { if(!rejectedCodes.has(r.id)) appliedCodes.add(r.id); });
+        } else {
+          rows.forEach(r => appliedCodes.add(r.id));
+        }
+        appliedCodes.forEach(code => { delete q.upserts[t][code]; });
+        if(!Object.keys(q.upserts[t]).length) delete q.upserts[t];
+        _supaSaveQueue(q);
+      }catch(e){
+        console.warn('[Supabase] upsert '+t+' falló:', e.message||e);
+        errors.push({table:t, op:'upsert', error:e.message||String(e)});
+      }
+    }
+
+    for(const t of ['activities','deals','pupilos','companies','clients','consultants']){
+      const ids = q.deletes[t] || [];
+      if(!ids.length) continue;
+      try{
+        await _supaDeleteIds(t, ids);
+        delete q.deletes[t];
+        _supaSaveQueue(q);
+      }catch(e){
+        console.warn('[Supabase] delete '+t+' falló:', e.message||e);
+        errors.push({table:t, op:'delete', error:e.message||String(e)});
+      }
+    }
+
+    if(errors.length){
+      const remaining = _supaQueueCount();
+      supaSetSyncBanner('queued', remaining);
+      return { errors, queued: remaining };
+    }
+
+    _supaUpdateSnapshot();
+    supaSetSyncBanner('ok');
+    return { sent: total };
+  }finally{
+    _supaFlushInflight = false;
+  }
+}
+
+function scheduleSupabaseFlush(){
+  if(!window.sb) return;
+  if(_supaFlushTimer) clearTimeout(_supaFlushTimer);
+  _supaFlushTimer = setTimeout(()=>{ _supaFlushTimer = null; flushSupabase().catch(e=>console.warn('flush:',e)); }, 500);
+}
+
+if(typeof window !== 'undefined'){
+  window.addEventListener('online', ()=>{ flushSupabase().catch(()=>{}) });
 }
 
 /* ──────────── 2.1 Storage adapter (preparado para Supabase futura) ──────
@@ -931,6 +1299,17 @@ const MIGRATIONS = [
     });
     return d;
   }},
+  {to:5, fn:d=>{
+    /* F15.4g: purgar campos legacy de password de localStorage existente */
+    (d.consultants||[]).forEach(c=>{
+      delete c.password;
+      delete c.passwordHash;
+      delete c.passwordSalt;
+      delete c.passwordIters;
+      delete c.passwordMustChange;
+    });
+    return d;
+  }},
 ];
 function applyMigrations(d){
   if(!d)return d;
@@ -969,15 +1348,14 @@ function reloadFromTemplate(){
 /* Migración: consultores creados antes del sistema de auth no tenían password/isAdmin.
    Les damos credenciales demo derivadas del id para que el admin pueda editarlas. */
 function migrateAuth(d){
+  /* F15.4g: ya no inyectamos passwords cleartext (Supabase Auth maneja credenciales).
+     Sólo aseguramos email y prefs por defecto para no romper renderers. */
   if(!d||!d.consultants)return;
   d.consultants.forEach(c=>{
-    if(c.isCEO){if(!c.password)c.password='admin1234';c.isAdmin=true}
-    else{
-      if(typeof c.isAdmin==='undefined')c.isAdmin=(c.id==='u1'); /* Pablo por defecto como admin */
-      if(!c.password)c.password=(c.id==='u1'?'pablo1234':'demo1234');
-    }
-    if(!c.email)c.email=(c.name||c.id).toLowerCase().replace(/[^a-z0-9]+/g,'.').replace(/^\.+|\.+$/g,'')+'@ceoadvisors.com';
-    if(!c.prefs)c.prefs={theme:'light',density:'normal'};
+    if(c.isCEO) c.isAdmin = true;
+    else if(typeof c.isAdmin==='undefined') c.isAdmin=(c.id==='u1');
+    if(!c.email) c.email=(c.name||c.id).toLowerCase().replace(/[^a-z0-9]+/g,'.').replace(/^\.+|\.+$/g,'')+'@ceoadvisors.com';
+    if(!c.prefs) c.prefs={theme:'light',density:'normal'};
   });
 }
 /* migrateExtra → ahora delega en applyMigrations() (cadena versionada). Mantengo el nombre como alias por compatibilidad con el código antiguo. */
@@ -992,6 +1370,7 @@ function saveDB(){
   _changesSinceExport++;
   try{localStorage.setItem('crm_changes_since_export',String(_changesSinceExport))}catch(e){}
   maybeBackupReminder();
+  try{ scheduleSupabaseFlush() }catch(e){ console.warn('supa schedule:',e) }
 }
 /* Integridad referencial: activity → deal → company → client. Si una actividad tiene dealId,
    hereda clientId y companyId del deal. Si un deal tiene companyId, lo forzamos a un cliente
@@ -1024,20 +1403,26 @@ function todayISO(){return new Date().toISOString().slice(0,10)}
 /* Audit log global, capado a 800 entradas para no saturar localStorage */
 function logAudit(action, entityType, entityId, details){
   if(!Array.isArray(DB.audit))DB.audit=[];
-  DB.audit.unshift({id:uid('au'),ts:nowISO(),userId:DB.currentUserId,action,entityType,entityId,details:details||''});
+  const entry = {id:uid('au'),ts:nowISO(),userId:DB.currentUserId,action,entityType,entityId,details:details||''};
+  DB.audit.unshift(entry);
   if(DB.audit.length>800)DB.audit.length=800;
+  /* F15.4d: persistir a Supabase fire-and-forget */
+  try{ _supaLogAuditRow(entry); }catch(e){}
 }
 function entityAudit(entityType, entityId){return (DB.audit||[]).filter(a=>a.entityType===entityType&&a.entityId===entityId)}
 function addNotification(toUserId, kind, payload){
   if(!toUserId||toUserId===DB.currentUserId)return; /* no te notifiques a ti mismo */
   if(!Array.isArray(DB.notifications))DB.notifications=[];
-  DB.notifications.unshift({id:uid('nt'),ts:nowISO(),to:toUserId,from:DB.currentUserId,kind,payload:payload||{},read:false});
+  const n = {id:uid('nt'),ts:nowISO(),to:toUserId,from:DB.currentUserId,kind,payload:payload||{},read:false};
+  DB.notifications.unshift(n);
   if(DB.notifications.length>500)DB.notifications.length=500;
+  /* F15.4d: persistir a Supabase */
+  try{ _supaInsertNotificationRow(n); }catch(e){}
 }
 function userNotifs(userId){return (DB.notifications||[]).filter(n=>n.to===userId)}
 function unreadNotifs(userId){return userNotifs(userId).filter(n=>!n.read)}
-function markNotifRead(id){const n=(DB.notifications||[]).find(x=>x.id===id);if(n){n.read=true;saveDB()}}
-function markAllNotifsRead(){(DB.notifications||[]).filter(n=>n.to===DB.currentUserId).forEach(n=>n.read=true);saveDB();render()}
+function markNotifRead(id){const n=(DB.notifications||[]).find(x=>x.id===id);if(n){n.read=true;saveDB();try{_supaMarkNotifRead(id)}catch(e){}}}
+function markAllNotifsRead(){(DB.notifications||[]).filter(n=>n.to===DB.currentUserId).forEach(n=>n.read=true);saveDB();render();try{_supaMarkNotifRead(null,true)}catch(e){}}
 /* @mention: parsea @username (sin espacios) y devuelve ids de consultor */
 function parseMentions(text){
   if(!text)return [];
@@ -1180,12 +1565,33 @@ const consultantAvatar=(c,size=26)=>`<div class="avatar" style="background:${CON
 const isCEO=()=>!!currentUser().isCEO;
 /* Admin: CEO y cualquier consultor con isAdmin=true. Pueden crear/editar perfiles. */
 const isAdmin=()=>{const u=currentUser();return !!(u&&(u.isCEO||u.isAdmin))};
-const scopedDeals=()=>isCEO()?DB.deals:DB.deals.filter(d=>(d.splits||[]).some(sp=>sp.u===DB.currentUserId));
+/* F15.3e: toggle Ocultar demo — wrappea scoped helpers para filtrar _isDemo */
+const isDemoHidden=()=>{try{return localStorage.getItem('crm_hide_demo')==='1'}catch(e){return false}};
+const _notDemo=x=>!x._isDemo;
+const _rawScopedDeals=()=>isCEO()?DB.deals:DB.deals.filter(d=>(d.splits||[]).some(sp=>sp.u===DB.currentUserId));
+const scopedDeals=()=>isDemoHidden()?_rawScopedDeals().filter(_notDemo):_rawScopedDeals();
 const scopedClientIdSet=()=>{const s=new Set();scopedDeals().forEach(d=>{if(d.clientId)s.add(d.clientId)});return s};
 const scopedCompanyIdSet=()=>{const s=new Set();scopedDeals().forEach(d=>{if(d.companyId)s.add(d.companyId)});return s};
-const scopedClients=()=>{if(isCEO())return DB.clients;const s=scopedClientIdSet();return DB.clients.filter(c=>s.has(c.id))};
-const scopedCompanies=()=>{if(isCEO())return DB.companies;const s=scopedCompanyIdSet();return DB.companies.filter(co=>s.has(co.id))};
-const scopedActivities=()=>{if(isCEO())return DB.activities;const cs=scopedClientIdSet(),os=scopedCompanyIdSet(),ds=new Set(scopedDeals().map(d=>d.id));return DB.activities.filter(a=>(a.clientId&&cs.has(a.clientId))||(a.companyId&&os.has(a.companyId))||(a.dealId&&ds.has(a.dealId)))};
+const _rawScopedClients=()=>{if(isCEO())return DB.clients;const s=scopedClientIdSet();return DB.clients.filter(c=>s.has(c.id))};
+const scopedClients=()=>isDemoHidden()?_rawScopedClients().filter(_notDemo):_rawScopedClients();
+const _rawScopedCompanies=()=>{if(isCEO())return DB.companies;const s=scopedCompanyIdSet();return DB.companies.filter(co=>s.has(co.id))};
+const scopedCompanies=()=>isDemoHidden()?_rawScopedCompanies().filter(_notDemo):_rawScopedCompanies();
+const _rawScopedActivities=()=>{if(isCEO())return DB.activities;const cs=scopedClientIdSet(),os=scopedCompanyIdSet(),ds=new Set(scopedDeals().map(d=>d.id));return DB.activities.filter(a=>(a.clientId&&cs.has(a.clientId))||(a.companyId&&os.has(a.companyId))||(a.dealId&&ds.has(a.dealId)))};
+const scopedActivities=()=>isDemoHidden()?_rawScopedActivities().filter(_notDemo):_rawScopedActivities();
+function toggleHideDemo(){
+  const cur=isDemoHidden();
+  try{localStorage.setItem('crm_hide_demo',cur?'0':'1')}catch(e){}
+  applyHideDemoBtnState();
+  try{render()}catch(e){}
+}
+function applyHideDemoBtnState(){
+  const btn=document.getElementById('btnHideDemo');
+  if(!btn)return;
+  const hidden=isDemoHidden();
+  btn.style.opacity=hidden?'1':'0.55';
+  btn.style.background=hidden?'var(--brand-50,#e0e7ff)':'';
+  btn.title=hidden?'Datos demo OCULTOS — click para mostrar':'Mostrar/Ocultar datos demo';
+}
 
 /* ──────────── health score: tier + cadencia + score 0-100 ──────────── */
 /* Tiers por Net Worth. Cadencia = días objetivo entre toques significativos. */
@@ -1357,33 +1763,21 @@ function renderLogin(){
     </div>`;
   setTimeout(()=>{const em=document.getElementById('loginEmail');if(em)em.focus()},50);
 }
-/* ──────────── PBKDF2 password helpers (SubtleCrypto) ──────────── */
-function _b64ToBytes(b64){const bin=atob(b64);const u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return u}
-function _bytesToB64(buf){let s='';const u=new Uint8Array(buf);for(let i=0;i<u.length;i++)s+=String.fromCharCode(u[i]);return btoa(s)}
-async function pbkdf2Hash(password, saltBytes, iters, keyLenBits=256){
-  const enc=new TextEncoder();
-  const key=await crypto.subtle.importKey('raw',enc.encode(password),{name:'PBKDF2'},false,['deriveBits']);
-  const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt:saltBytes,iterations:iters,hash:'SHA-256'},key,keyLenBits);
-  return _bytesToB64(bits);
+/* ──────────── F15.3f: Password ops via Supabase Auth ──────────── */
+/* Auth lives in Supabase. Helpers locales sólo invocan al backend; no se
+   guarda nada de password en DB.consultants. */
+async function updateMyPassword(plain){
+  if(!window.sb) throw new Error('Supabase no inicializado');
+  const { error } = await sb.auth.updateUser({ password: plain });
+  if(error) throw error;
+  return true;
 }
-async function verifyPassword(user, plain){
-  if(user.passwordHash && user.passwordSalt && user.passwordIters){
-    const salt=_b64ToBytes(user.passwordSalt);
-    const computed=await pbkdf2Hash(plain, salt, user.passwordIters, 256);
-    return computed===user.passwordHash;
-  }
-  // Fallback legacy texto plano
-  return (user.password||'')===plain;
-}
-async function setUserPassword(user, plain){
-  const salt=crypto.getRandomValues(new Uint8Array(16));
-  const iters=120000;
-  const hash=await pbkdf2Hash(plain, salt, iters, 256);
-  user.passwordHash=hash;
-  user.passwordSalt=_bytesToB64(salt);
-  user.passwordIters=iters;
-  user.passwordMustChange=false;
-  delete user.password;
+async function sendPasswordResetEmail(email){
+  if(!window.sb) throw new Error('Supabase no inicializado');
+  const redirectTo = window.location.origin;
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
+  if(error) throw error;
+  return true;
 }
 
 /* ──────────── 1.3 Login lockout (warning a 3, lockout 15 min al 5º) ───── */
@@ -1448,50 +1842,7 @@ async function doLogin(ev){
   setView('today');
   return false;
 }
-function forceChangePasswordModal(u){
-  const ov=document.createElement('div');
-  ov.className='login-wrap';
-  ov.id='pwChangeOverlay';
-  ov.innerHTML=`
-    <div class="login-card">
-      <div class="login-h">Cambia tu contraseña</div>
-      <div class="login-sub">Estás usando una contraseña por defecto. Por seguridad, debes establecer una nueva antes de continuar.</div>
-      <div id="pwErr" class="login-err" style="display:none"></div>
-      <div class="login-field"><label>Nueva contraseña</label><input id="pw_new" type="password" minlength="8" required /></div>
-      <div class="login-field"><label>Repite la contraseña</label><input id="pw_new2" type="password" minlength="8" required /></div>
-      <div id="pw_strength" style="margin:6px 0 10px;height:6px;background:var(--surface-2);border-radius:3px;overflow:hidden"><div id="pw_strength_bar" style="height:100%;width:0%;background:#ccc;transition:width .2s,background .2s"></div></div>
-      <div id="pw_strength_lbl" class="muted" style="font-size:11.5px;margin-bottom:8px">Fortaleza: —</div>
-      <div class="login-hint">Mínimo 8 caracteres. Recomendado: 12+ con mayúsculas, números y símbolos.</div>
-      <button class="login-btn" onclick="submitForceChangePassword('${u.id}')">Guardar y continuar</button>
-    </div>`;
-  document.body.appendChild(ov);
-  setTimeout(()=>{
-    const el=document.getElementById('pw_new');if(el)el.focus();
-    const upd=()=>{const v=document.getElementById('pw_new').value;const s=passwordStrength(v);const bar=document.getElementById('pw_strength_bar');const lbl=document.getElementById('pw_strength_lbl');if(bar){bar.style.width=Math.round((s.score/5)*100)+'%';bar.style.background=s.color}if(lbl)lbl.textContent='Fortaleza: '+s.label};
-    if(el)el.addEventListener('input',upd);
-  },50);
-}
-async function submitForceChangePassword(uid){
-  const u=findConsultant(uid);if(!u)return;
-  const a=document.getElementById('pw_new').value;
-  const b=document.getElementById('pw_new2').value;
-  const err=document.getElementById('pwErr');
-  function showErr(m){err.textContent=m;err.style.display='block'}
-  if(!a||a.length<8)return showErr('La contraseña debe tener al menos 8 caracteres.');
-  if(a!==b)return showErr('Las contraseñas no coinciden.');
-  if(a.toLowerCase().includes('changeme')||a==='12345678'||a==='password')return showErr('Elige una contraseña más fuerte.');
-  await setUserPassword(u, a);
-  saveDB();
-  logAudit('edit','consultant',uid,'Password actualizada (force-change tras login)');
-  document.getElementById('pwChangeOverlay')?.remove();
-  /* F11.1: primer login → welcome modal */
-  const welcomeKey='crm_welcomed_'+u.id;
-  if(!localStorage.getItem(welcomeKey)){
-    localStorage.setItem(welcomeKey,'1');
-    showWelcomeModal(u);
-  }
-  setView('today');
-}
+/* F15.3f: forceChangePasswordModal removido — Supabase Auth maneja el flow de password reset por email. */
 function showWelcomeModal(u){
   const ov=document.createElement('div');
   ov.id='welcomeOv';
@@ -1515,6 +1866,10 @@ function doLogout(){
   state.authed=false;
   state.authedUserId=null;
   state.authError='';
+  /* F15.4e: cerrar canales Realtime al logout */
+  try{ unsubscribeRealtime(); }catch(e){}
+  /* Cerrar sesión Supabase también (no esperamos) */
+  try{ if(window.sb) sb.auth.signOut(); }catch(e){}
   closeUDrop();
   render();
 }
@@ -1529,28 +1884,27 @@ function openMyProfile(){
     </div>
     <div class="field"><label>Bio</label><textarea id="pf_bio" rows="2">${u.bio||''}</textarea></div>
     <div class="muted" style="font-size:12px;margin:8px 0 4px;font-weight:600;color:var(--ink)">Cambiar contraseña (opcional)</div>
-    <div class="row">
-      <div class="field"><label>Contraseña actual</label><input id="pf_cur" type="password" /></div>
-      <div class="field"><label>Nueva contraseña</label><input id="pf_new" type="password" placeholder="Mín. 8 caracteres" oninput="(function(v){const s=passwordStrength(v);const b=document.getElementById('pf_bar');const l=document.getElementById('pf_lbl');if(b){b.style.width=Math.round((s.score/5)*100)+'%';b.style.background=s.color}if(l)l.textContent='Fortaleza: '+s.label})(this.value)" /></div>
-    </div>
+    <div class="field"><label>Nueva contraseña</label><input id="pf_new" type="password" placeholder="Mín. 8 caracteres — deja vacío para no cambiar" oninput="(function(v){const s=passwordStrength(v);const b=document.getElementById('pf_bar');const l=document.getElementById('pf_lbl');if(b){b.style.width=Math.round((s.score/5)*100)+'%';b.style.background=s.color}if(l)l.textContent='Fortaleza: '+s.label})(this.value)" /></div>
     <div id="pf_strength" style="margin:6px 0 6px;height:5px;background:var(--surface-2);border-radius:3px;overflow:hidden"><div id="pf_bar" style="height:100%;width:0%;background:#ccc;transition:width .2s,background .2s"></div></div>
     <div id="pf_lbl" class="muted" style="font-size:11.5px">Fortaleza: —</div>
-    <div class="muted" style="font-size:11.5px;margin-top:4px">Deja los campos de contraseña vacíos si solo quieres actualizar tus datos.</div>
+    <div class="muted" style="font-size:11.5px;margin-top:4px">El cambio se aplica via Supabase Auth (no requiere contraseña actual; ya estás autenticado).</div>
   `,async()=>{
     const name=$('#pf_name').value.trim();if(!name){alert('Nombre requerido');return false}
     const email=$('#pf_email').value.trim();if(!email){alert('Email requerido');return false}
     const dup=DB.consultants.find(c=>c.id!==u.id&&(c.email||'').toLowerCase()===email.toLowerCase());
     if(dup){alert('Ya existe otro consultor con ese email.');return false}
-    const cur=$('#pf_cur').value,nw=$('#pf_new').value;
+    const nw=$('#pf_new').value;
     if(nw){
-      if(!cur){alert('Indica tu contraseña actual para cambiarla.');return false}
-      let ok=false; try{ok=await verifyPassword(u, cur)}catch(e){}
-      if(!ok){alert('Contraseña actual incorrecta.');return false}
       if(nw.length<8){alert('La nueva contraseña debe tener al menos 8 caracteres.');return false}
       const s=passwordStrength(nw);
       if(s.score<2 && !confirm('Tu nueva contraseña es '+s.label.toLowerCase()+'. ¿Guardar igualmente?'))return false;
-      await setUserPassword(u, nw);
-      logAudit('edit','consultant',u.id,'Password actualizada por el usuario');
+      try{
+        await updateMyPassword(nw);
+        logAudit('edit','consultant',u.id,'Password actualizada por el usuario (Supabase Auth)');
+      }catch(e){
+        alert('No se pudo actualizar la contraseña: '+(e.message||e));
+        return false;
+      }
     }
     u.name=name;u.email=email;u.region=$('#pf_region').value.trim()||u.region;u.bio=$('#pf_bio').value.trim();
     if(isAdmin())u.role=$('#pf_role').value.trim()||u.role;
@@ -4668,7 +5022,7 @@ function openConsultant(id){
     <div class="field-grid">
       <div class="field"><label>Email</label><div class="v"><a href="mailto:${c.email}">${c.email}</a></div></div>
       <div class="field"><label>Permisos</label><div class="v">${c.isCEO?'<span class="tag green">CEO · acceso total</span>':c.isAdmin?'<span class="tag blue">Admin · gestiona equipo</span>':'<span class="tag">Consultor</span>'}</div></div>
-      <div class="field"><label>Estado contraseña</label><div class="v">${c.passwordMustChange?'<span class="tag" style="background:#fef3c7;color:#92400e">⚠ Pendiente cambio en próximo login</span>':'<span class="tag green">OK</span>'}</div></div>
+      <div class="field"><label>Auth</label><div class="v"><span class="tag green">Supabase Auth</span></div></div>
       ${isAdmin()&&!c.isCEO?`<div class="field"><label>Acciones</label><div class="v flex gap-s"><button class="btn sm outline" onclick="editConsultant('${c.id}')">Editar perfil</button><button class="btn sm outline" onclick="resetConsultantPassword('${c.id}')">Resetear contraseña</button>${c.id!==DB.currentUserId?`<button class="btn sm danger" onclick="deleteConsultant('${c.id}')">Eliminar</button>`:''}</div></div>`:''}
       ${c.id===DB.currentUserId?`<div class="field"><label>Sesión</label><div class="v"><span class="tag green">Conectado ahora</span></div></div>`:''}
     </div>
@@ -5167,12 +5521,12 @@ function modalConsultant(existing){
     if(existing){
       existing.name=name;existing.role=role;existing.region=region;existing.email=email;existing.bio=bio;
       if(!existing.isCEO)existing.isAdmin=adminFlag;
-      if(pass)existing.password=pass;
+      /* F15.3f: password lives in Supabase Auth */
     }else{
       const id=uid('u');
       const palette=['linear-gradient(135deg,#0E7A4A,#4FB67E)','linear-gradient(135deg,#7E2D86,#B85DBE)','linear-gradient(135deg,#B25E00,#E69138)','linear-gradient(135deg,#9B2C2C,#D85959)','linear-gradient(135deg,#1B4F8C,#2E7BC4)'];
       CONSULTANT_COLORS[id]=palette[DB.consultants.length%palette.length];
-      DB.consultants.push({id,name,role,email,password:pass,region,bio,isAdmin:adminFlag,isCEO:false});
+      DB.consultants.push({id,name,role,email,region,bio,isAdmin:adminFlag,isCEO:false});
     }
     renderUserSwitcher();
     return true;
@@ -5182,14 +5536,15 @@ function editConsultant(id){const c=findConsultant(id);if(!c)return;closeDrawer(
 async function resetConsultantPassword(id){
   if(!isAdmin()){alert('Solo admins.');return}
   const c=findConsultant(id);if(!c||c.isCEO)return;
-  const nw=prompt('Nueva contraseña temporal para '+c.name+' (mín. 8 caracteres). Se le pedirá cambiarla en el próximo login:','demo1234');
-  if(nw==null)return;
-  if(nw.length<8){alert('Mínimo 8 caracteres.');return}
-  await setUserPassword(c, nw);
-  c.passwordMustChange=true; /* forzar cambio en próximo login */
-  saveDB();
-  logAudit('edit','consultant',id,'Password reseteada por admin (mustChange=true)');
-  alert('Contraseña reseteada. '+c.name+' deberá cambiarla en su próximo login.');
+  if(!c.email){alert('Este consultor no tiene email — añade uno antes de resetear.');return}
+  if(!confirm('Enviar email de recuperación de contraseña a '+c.name+' ('+c.email+')?'))return;
+  try{
+    await sendPasswordResetEmail(c.email);
+    logAudit('edit','consultant',id,'Password reset email enviado por admin (Supabase Auth)');
+    alert('Email de recuperación enviado a '+c.email+'. El usuario recibirá un enlace para establecer nueva contraseña.');
+  }catch(e){
+    alert('No se pudo enviar el email: '+(e.message||e));
+  }
 }
 function deleteConsultant(id){
   if(!isAdmin()){alert('Solo admins.');return}
@@ -6763,17 +7118,190 @@ document.addEventListener('keydown',e=>{
   }
 });
 
+/* ──────────── F15.4d: sync audit + notifications a Supabase ──────────── */
+async function _supaLogAuditRow(entry){
+  if(!window.sb) return;
+  try{
+    const { data:{ user } } = await sb.auth.getUser();
+    if(!user) return;
+    const me = (DB.consultants||[]).find(c => c._supaId && DB.currentUserId===c.id);
+    const entitySupaId = (function(){
+      if(!entry.entityType || !entry.entityId) return null;
+      const lookup = {client:DB.clients, company:DB.companies, deal:DB.deals, activity:DB.activities, pupilo:DB.pupilos, consultant:DB.consultants};
+      const list = lookup[entry.entityType];
+      if(!list) return null;
+      const row = list.find(r => r.id===entry.entityId);
+      return (row && row._supaId) || null;
+    })();
+    await sb.from('activity_log').insert({
+      user_id: user.id,
+      action: entry.action || 'unknown',
+      entity: entry.entityType || null,
+      entity_id: entitySupaId,
+      metadata: { code: entry.entityId, details: entry.details || '' }
+    });
+  }catch(e){ /* fire-and-forget, no propagar */ }
+}
+
+async function _supaInsertNotificationRow(n){
+  if(!window.sb) return;
+  try{
+    const target = (DB.consultants||[]).find(c => c.id===n.to);
+    if(!target || !target._supaId) return;
+    await sb.from('notifications').insert({
+      user_id: target._supaId,
+      kind: n.kind || 'generic',
+      payload: { from: n.from, payload: n.payload||{}, localId: n.id, ts: n.ts },
+      read: !!n.read
+    });
+  }catch(e){ /* fire-and-forget */ }
+}
+
+async function _supaMarkNotifRead(localId, allMine=false){
+  if(!window.sb) return;
+  try{
+    const me = (DB.consultants||[]).find(c => c.id===DB.currentUserId);
+    if(!me || !me._supaId) return;
+    if(allMine){
+      await sb.from('notifications').update({read:true}).eq('user_id', me._supaId).eq('read', false);
+    } else if(localId){
+      // match por payload->>localId (jsonb)
+      await sb.from('notifications').update({read:true}).eq('user_id', me._supaId).eq('payload->>localId', localId);
+    }
+  }catch(e){}
+}
+
+async function _supaLoadNotifications(){
+  if(!window.sb) return [];
+  try{
+    const me = (DB.consultants||[]).find(c => c.id===DB.currentUserId);
+    if(!me || !me._supaId) return [];
+    const { data, error } = await sb.from('notifications').select('*').eq('user_id', me._supaId).order('created_at',{ascending:false}).limit(200);
+    if(error) return [];
+    return (data||[]).map(x => ({
+      id: (x.payload && x.payload.localId) || x.id,
+      _supaNotifId: x.id,
+      ts: x.created_at,
+      to: DB.currentUserId,
+      from: (x.payload && x.payload.from) || null,
+      kind: x.kind,
+      payload: (x.payload && x.payload.payload) || {},
+      read: !!x.read
+    }));
+  }catch(e){ return [] }
+}
+
+/* ──────────── F15.4e: Realtime subscriptions ──────────── */
+let _supaChannels = [];
+
+function _supaApplyRealtimeRow(table, row){
+  // Mapear snake_case → camelCase usando los maps de DB
+  const uMap = new Map((DB.consultants||[]).filter(c=>c._supaId).map(c=>[c._supaId,c.id]));
+  const cMap = new Map((DB.clients||[]).filter(c=>c._supaId).map(c=>[c._supaId,c.id]));
+  const coMap = new Map((DB.companies||[]).filter(c=>c._supaId).map(c=>[c._supaId,c.id]));
+  const dMap = new Map((DB.deals||[]).filter(c=>c._supaId).map(c=>[c._supaId,c.id]));
+  if(table==='deals') return {id:row.code,_supaId:row.id,_supaUpdatedAt:row.updated_at,_isDemo:row.is_demo,title:row.title,clientId:cMap.get(row.client_id)||null,companyId:coMap.get(row.company_id)||null,type:row.type,stage:row.stage,amount:Number(row.amount)||0,closeDate:row.close_date,splits:(row.splits||[]).map(s=>({u:uMap.get(s.u)||s.u,pct:s.pct})),notes:row.notes,createdAt:row.created_at?row.created_at.slice(0,10):'',comments:row.comments||[],stageHistory:row.stage_history||[],lostReason:row.lost_reason||null,wonAt:row.won_at||null,lostAt:row.lost_at||null,tags:row.tags||[]};
+  if(table==='clients') return {id:row.code,_supaId:row.id,_supaUpdatedAt:row.updated_at,_isDemo:row.is_demo,name:row.name,email:row.email,phone:row.phone,country:row.country,city:row.city,netWorth:Number(row.net_worth)||0,source:row.source,tier:row.tier,notes:row.notes,comments:row.comments||[],tags:row.tags||[]};
+  if(table==='activities') return {id:row.code,_supaId:row.id,_supaUpdatedAt:row.updated_at,_isDemo:row.is_demo,type:row.type,date:row.date,clientId:cMap.get(row.client_id)||null,companyId:coMap.get(row.company_id)||null,dealId:dMap.get(row.deal_id)||null,title:row.title,notes:row.notes,done:!!row.done,createdBy:uMap.get(row.created_by)||null,assignedTo:uMap.get(row.assigned_to)||null};
+  return null;
+}
+
+function _supaHandleRealtime(table, payload){
+  const ev = payload.eventType || payload.event;
+  const row = payload.new || payload.old;
+  if(!row || !row.id) return;
+  // Filtrar echo: si la signature en snapshot ya es igual al row entrante, ignorar
+  const snap = _supaLoadSnapshot();
+  const code = Object.keys((snap[table]||{})).find(k => snap[table][k] && snap[table][k].supaId===row.id);
+  if(code && ev !== 'DELETE'){
+    const mapped = _supaApplyRealtimeRow(table, row);
+    if(mapped){
+      const sig = JSON.stringify(_supaToRow(table, mapped));
+      if(sig === snap[table][code].sig) return; // echo del propio cliente
+    }
+  }
+  const list = ({deals:DB.deals,clients:DB.clients,activities:DB.activities})[table];
+  if(!list) return;
+  if(ev === 'DELETE'){
+    const idx = list.findIndex(r => r._supaId===row.id);
+    if(idx>=0){ list.splice(idx,1); supaToastRealtime(table+' eliminado'); }
+  } else {
+    const mapped = _supaApplyRealtimeRow(table, row);
+    if(!mapped) return;
+    const idx = list.findIndex(r => r._supaId===row.id);
+    if(idx>=0){ list[idx] = Object.assign(list[idx], mapped); supaToastRealtime(table+' actualizado'); }
+    else { list.push(mapped); supaToastRealtime(table+' nuevo'); }
+  }
+  try{ Storage.write(JSON.stringify(DB)); _supaUpdateSnapshot(); }catch(e){}
+  try{ render(); }catch(e){}
+}
+
+function _supaHandleNotifRealtime(payload){
+  const ev = payload.eventType || payload.event;
+  const row = payload.new || payload.old;
+  if(!row || ev==='DELETE') return;
+  const me = (DB.consultants||[]).find(c => c.id===DB.currentUserId);
+  if(!me || !me._supaId || row.user_id !== me._supaId) return;
+  if(!Array.isArray(DB.notifications)) DB.notifications=[];
+  const localId = (row.payload && row.payload.localId) || row.id;
+  const exists = DB.notifications.find(n => n.id===localId || n._supaNotifId===row.id);
+  if(exists){ exists.read = !!row.read; }
+  else {
+    DB.notifications.unshift({
+      id: localId, _supaNotifId: row.id, ts: row.created_at, to: DB.currentUserId,
+      from: (row.payload && row.payload.from) || null, kind: row.kind,
+      payload: (row.payload && row.payload.payload) || {}, read: !!row.read
+    });
+    supaToastRealtime('Nueva notificación');
+  }
+  try{ Storage.write(JSON.stringify(DB)); render(); }catch(e){}
+}
+
+function subscribeRealtime(){
+  if(!window.sb) return;
+  unsubscribeRealtime();
+  ['deals','clients','activities'].forEach(t => {
+    const ch = sb.channel('public:'+t).on('postgres_changes', {event:'*', schema:'public', table:t}, p => _supaHandleRealtime(t, p)).subscribe();
+    _supaChannels.push(ch);
+  });
+  const nch = sb.channel('public:notifications').on('postgres_changes', {event:'*', schema:'public', table:'notifications'}, p => _supaHandleNotifRealtime(p)).subscribe();
+  _supaChannels.push(nch);
+}
+
+function unsubscribeRealtime(){
+  if(!window.sb) return;
+  try{ sb.removeAllChannels(); }catch(e){}
+  _supaChannels = [];
+}
+
+function supaToastRealtime(msg){
+  let t = document.getElementById('supaToast');
+  if(!t){
+    t = document.createElement('div');
+    t.id = 'supaToast';
+    t.style.cssText = 'position:fixed;right:20px;bottom:20px;background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.15);padding:10px 14px;border-radius:8px;font-size:13px;z-index:9997;opacity:0;transition:opacity .25s;pointer-events:none';
+    document.body.appendChild(t);
+  }
+  t.textContent = '↻ '+msg;
+  t.style.opacity = '1';
+  clearTimeout(window._supaToastTimer);
+  window._supaToastTimer = setTimeout(()=>{ if(t) t.style.opacity='0'; }, 2800);
+}
+
 /* boot */
 state.authed=false;
 state.view='today';
 renderUserSwitcher();
 render();
+try{ applyHideDemoBtnState() }catch(e){}
 /* F15.3b/c: auto-login si Supabase tiene sesión activa (magic link o session persistida) */
 (async function bootSupabase(){
   if(!sb)return;
   try{
     const {data:{session}}=await sb.auth.getSession();
     if(!session){supaSetOfflineBanner(false);return}
+    /* F15.3d: push de cambios locales pendientes ANTES del refresh */
+    try{ await flushSupabase() }catch(e){ console.warn('boot flush:',e) }
     await refreshFromSupabaseIfPossible();
     const email=(session.user.email||'').toLowerCase();
     const u=DB.consultants.find(c=>(c.email||'').toLowerCase()===email);
