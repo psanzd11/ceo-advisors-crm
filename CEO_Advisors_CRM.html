@@ -672,6 +672,9 @@
         <button class="icon-btn" id="btnHideDemo" title="Mostrar/Ocultar datos demo" onclick="toggleHideDemo()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
+        <button class="icon-btn" id="btnSupaReset" title="Limpiar cola Supabase y resincronizar (admin)" onclick="supaResetQueue()" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.5-6.36L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.36L3 16"/><path d="M3 21v-5h5"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>
+        </button>
         <div class="notif-wrap">
           <button class="icon-btn" id="btnNotif" title="Notificaciones" onclick="toggleNotifs()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
@@ -1076,10 +1079,20 @@ function _supaResolveUuid(type, code){
 }
 
 function _supaEnsureSupaId(x){
-  if(!x._supaId){
-    try{ x._supaId = (crypto.randomUUID ? crypto.randomUUID() : ('xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,ch=>{const r=Math.random()*16|0;return (ch==='x'?r:(r&0x3|0x8)).toString(16)}))); }
-    catch(e){ x._supaId = 'fallback-'+Date.now()+'-'+Math.random().toString(36).slice(2,10); }
-  }
+  if(x._supaId) return x._supaId;
+  /* F15.4-hotfix: antes de generar UUID nuevo, intentar resolverlo desde el snapshot.
+     Si la fila YA existe en backend (otro device la creó, o el _supaId se perdió por una
+     migración local), recuperar su UUID real evita conflict 409 por unique(code). */
+  try{
+    const snap = JSON.parse(localStorage.getItem(SUPA_SNAPSHOT_KEY)||'{}');
+    for(const t of Object.keys(snap)){
+      const entry = snap[t] && snap[t][x.id];
+      if(entry && entry.supaId){ x._supaId = entry.supaId; return x._supaId; }
+    }
+  }catch(e){}
+  /* Fila genuinamente nueva: generar UUID v4 */
+  try{ x._supaId = (crypto.randomUUID ? crypto.randomUUID() : ('xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,ch=>{const r=Math.random()*16|0;return (ch==='x'?r:(r&0x3|0x8)).toString(16)}))); }
+  catch(e){ x._supaId = 'fallback-'+Date.now()+'-'+Math.random().toString(36).slice(2,10); }
   return x._supaId;
 }
 
@@ -7445,21 +7458,46 @@ function supaToastRealtime(msg){
   window._supaToastTimer = setTimeout(()=>{ if(t) t.style.opacity='0'; }, 2800);
 }
 
+/* F15.4-hotfix: botón emergencia limpiar cola Supabase + resincronizar */
+async function supaResetQueue(){
+  if(!isAdmin()){ alert('Solo admins.'); return; }
+  if(!confirm('Esto borrará la cola de cambios pendientes Y el snapshot local, luego refresca todo desde Supabase. ¿Continuar?')) return;
+  try{
+    localStorage.removeItem(SUPA_QUEUE_KEY);
+    localStorage.removeItem(SUPA_SNAPSHOT_KEY);
+    localStorage.removeItem(SUPA_CONFLICTS_KEY);
+    document.getElementById('supaConflictModal')?.remove();
+    supaSetOfflineBanner(false);
+    await refreshFromSupabaseIfPossible();
+    await flushSupabase();
+    alert('Cola limpiada y datos resincronizados.');
+  }catch(e){
+    alert('Error: '+(e.message||e));
+  }
+}
+function applyAdminToolsVisibility(){
+  const btn = document.getElementById('btnSupaReset');
+  if(btn) btn.style.display = (typeof isAdmin==='function' && isAdmin()) ? '' : 'none';
+}
+
 /* boot */
 state.authed=false;
 state.view='today';
 renderUserSwitcher();
 render();
 try{ applyHideDemoBtnState() }catch(e){}
+try{ applyAdminToolsVisibility() }catch(e){}
 /* F15.3b/c: auto-login si Supabase tiene sesión activa (magic link o session persistida) */
 (async function bootSupabase(){
   if(!sb)return;
   try{
     const {data:{session}}=await sb.auth.getSession();
     if(!session){supaSetOfflineBanner(false);return}
-    /* F15.3d: push de cambios locales pendientes ANTES del refresh */
-    try{ await flushSupabase() }catch(e){ console.warn('boot flush:',e) }
+    /* F15.4-hotfix: REFRESH primero para poblar _supaId reales, LUEGO flush.
+       Esto evita que el cliente genere UUIDs ficticios para filas que ya existen
+       en backend pero cuyo _supaId local no estaba poblado (causa del bug 409). */
     await refreshFromSupabaseIfPossible();
+    try{ await flushSupabase() }catch(e){ console.warn('boot flush:',e) }
     const email=(session.user.email||'').toLowerCase();
     const u=DB.consultants.find(c=>(c.email||'').toLowerCase()===email);
     if(u){
@@ -7470,6 +7508,7 @@ try{ applyHideDemoBtnState() }catch(e){}
       loadUserPrefs();
       const ov=document.getElementById('loginOverlay');if(ov)ov.remove();
       renderUserSwitcher();
+      try{ applyAdminToolsVisibility() }catch(e){}
       setView('today');
     }
   }catch(e){console.warn('boot supabase:',e)}
