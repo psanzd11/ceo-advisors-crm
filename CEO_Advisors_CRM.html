@@ -1099,7 +1099,7 @@ function _supaEnsureSupaId(x){
 function _supaToRow(table, x){
   const id = _supaEnsureSupaId(x);
   const nowIso = new Date().toISOString();
-  const base = { id, code: x.id, updated_at: x._supaUpdatedAt || nowIso };
+  const base = { id, code: x.id, updated_at: nowIso };
   // Enums válidos (F15.4a)
   const DEAL_TYPES  = ['mandate','retainer','equity','board','advisor','other'];
   const DEAL_STAGES = ['lead','contact','proposal','negotiation','won','lost','on-hold'];
