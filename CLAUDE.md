@@ -10,14 +10,15 @@ CRM single-file (HTML + inline CSS/JS, vanilla, sin build) para gestionar client
 
 | Archivo | Rol |
 |---|---|
-| `CEO_Advisors_CRM.html` | Source único. **Solo editar este**. ~7600 líneas, ~560KB |
-| `index.html` | Deploy artifact. Generado por `inject_data.py` o `regen_index.py`. Nunca editar manualmente |
-| `CEO_Advisors_CRM_DataTemplate_v2.xlsx` | Plantilla Excel (puede corromperse — ver fallback abajo) |
-| `inject_data.py` | Excel → seedData en HTML. Si el Excel está roto, usar `outputs/regen_index.py` (extrae seedData del index.html actual) |
-| `sync.py` | JSON export del CRM → Excel + HTML. Round-trip seamless |
-| `crm.bat` | Auto-detecta sync vs inject según fechas |
-| `migrate_to_supabase.py` | Importador Excel→Supabase (UUIDs deterministas via `uuid5`) |
+| `index.html` | **Source único y deploy artifact.** ~7600 líneas, ~570KB. Lo que sirve Railway/Caddy. Editar aquí directamente |
+| `Dockerfile` + `Caddyfile` + `railway.json` | Deploy config. Railway tira de `index.html` y lo sirve con Caddy en `$PORT` |
+| `manifest.json` + `sw.js` | PWA básico |
+| `migrate_to_supabase.py` | Importador one-shot Excel→Supabase (UUIDs deterministas via `uuid5`). Útil para re-importar si hace falta |
+| `invite_remaining.py` | Reenvío de invitaciones Supabase Auth (rate-limited a ~2/hora con SMTP gratuito) |
 | `supabase_migrations/*.sql` | Referencias de las migrations aplicadas (9 totales) |
+| `supabase_migrations/.env.supabase` | URL + publishable key (públicas, no service_role) |
+| `pupilo_docs/` | CVs de pupilos (datos reales, en .gitignore) |
+| `limpieza/` | Archivos obsoletos del pipeline pre-Supabase (Excel template, `inject_data.py`, `sync.py`, `crm.bat`, source HTML separado, docs viejas). En .gitignore |
 
 ## Proyecto Supabase
 
@@ -45,21 +46,19 @@ CRM single-file (HTML + inline CSS/JS, vanilla, sin build) para gestionar client
 
 ## Workflow del usuario
 
-- **Edita en Excel** → doble-click `crm.bat` (modo INJECT) → abre `index.html` → "¿Recargar?" → Aceptar.
-- **Edita en el CRM** → "Exportar" descarga JSON → doble-click `crm.bat` (modo SYNC) → recarga el HTML.
-- **Multi-user real:** los cambios se sincronizan automáticamente vía Supabase (debounce 500ms) y aparecen en otros dispositivos vía Realtime.
+- **Día a día:** el equipo usa el CRM en `https://ceo-advisors-crm-production.up.railway.app`. Login con Supabase Auth (magic link o password). Los cambios se sincronizan automáticamente (debounce 500ms) y aparecen en otros dispositivos vía Realtime.
+- **Cambio de código:** editar `index.html` → `git commit` + `git push` a `main` → Railway detecta y redeploya en ~1 min.
+- **Cambios destructivos** (DDL, RLS, RPCs): nueva migration en `supabase_migrations/NNN_<name>.sql` y aplicar via MCP `apply_migration`.
 
 ## Cómo trabajar (lecciones destiladas)
 
 **Antes de cualquier sesión, auditar (30 seg):**
 ```bash
-tail -3 CEO_Advisors_CRM.html         # ¿termina en </html>?
-tail -3 index.html                     # ¿igual?
-python3 -c "import ast; ast.parse(open('inject_data.py').read())"
+tail -3 index.html                     # ¿termina en </html>?
 # Verificar JS válido:
 python3 -c "
 import subprocess
-html=open('CEO_Advisors_CRM.html').read()
+html=open('index.html').read()
 lines=html.split('\n')
 s=next(i for i,l in enumerate(lines) if l.strip()=='<script>')
 e=next(i for i in range(len(lines)-1,-1,-1) if lines[i].strip()=='</script>')
@@ -89,11 +88,10 @@ Una pasada bien planeada equivale a ~10 Edits secuenciales en tokens.
 **Insertar antes de marker estable, nunca al final.** `/* boot */` y `/* ──────────── 2.1 Storage adapter` son markers que viven en posición temprana del archivo. Insertar funciones nuevas ANTES de ellos preserva el resto del archivo intacto.
 
 **Verify completo tras cada batch** (no opcional):
-1. `tail -3` del source HTML — ¿termina en `</html>`?
+1. `tail -3 index.html` — ¿termina en `</html>`?
 2. `node --check` del JS extraído
 3. Tail check: `state.authed=false` y `render();` presentes en últimos 1500 bytes
 4. Grep de markers de cada feature añadida
-5. Mismo verify en `index.html` tras regenerar
 
 **Si verify falla con archivo truncado** (síntoma: termina mid-statement como `ev.preventDefaul` o `if count == 0:` sin body):
 ```python
@@ -115,13 +113,13 @@ Patrón usado 6 veces en este repo, fiable.
 
 - **Auth en Supabase, no en el cliente.** El HTML ya no tiene `pbkdf2Hash/verifyPassword/setUserPassword`. Cambios de password vía `updateMyPassword` (`sb.auth.updateUser`). Admin reset vía `sendPasswordResetEmail` (`sb.auth.resetPasswordForEmail`).
 - **`is_demo` flag.** Datos seed del Excel actual están marcados `is_demo=true`. Toggle UI los oculta. Cualquier fila creada por el CRM en runtime entra con `is_demo=false` (default).
-- **RPC `upsert_<tabla>_if_newer`.** Reemplaza el upsert directo. Permite conflict resolution (sólo aplica si `excluded.updated_at >= existing.updated_at`).
-- **`_supaUpdatedAt` por fila.** Se preserva en cliente entre fetch y flush para que el server detecte conflictos. Si haces "forzar", se bumpea `+60s` al futuro para vencer al server.
+- **RPC `upsert_<tabla>_if_newer`.** Reemplaza el upsert directo. Comportamiento actual = **last-write-wins**: el cliente envía siempre `updated_at: nowIso` (no `_supaUpdatedAt` viejo) → el RPC casi nunca rechaza en uso real. Modal de conflicto queda como salvaguarda residual.
+- **`_supaUpdatedAt` por fila.** Se preserva en cliente solo para tracking de "qué versión vi por última vez", NO se envía como timestamp del upsert. Si haces "forzar", se bumpea `+60s` al futuro.
 - **Realtime echo filter.** `_supaHandleRealtime` compara signature vs snapshot ANTES de aplicar. Si son iguales, es el propio echo del upsert anterior.
 
 ## Cosas que NUNCA romper
 
-- **Round-trip Excel ↔ JSON ↔ HTML ↔ Supabase.** `sync.py` hace merge no-destructivo (no pisa celda llena con vacía). Las migraciones a Supabase son idempotentes por `code` (UUIDs deterministas via `uuid5(NS_FIXED, code)`).
+- **Idempotencia por `code`.** `migrate_to_supabase.py` usa UUIDs deterministas via `uuid5(NS_FIXED, code)` con `NS = UUID("00000000-0000-0000-0000-000000000001")`. Cambiar el NS = duplicar todo.
 - **Filtro de passwords en export JSON** (`btnExport`) — defensa, aunque hoy no hay passwords.
 - **IDs secuenciales.** `uid(prefix)` busca el siguiente número libre del prefijo en todas las entidades. Prefijos: `u` (consultants), `c` (clients), `co` (companies), `d` (deals), `a` (activities), `p` (pupilos), `au` (audit), `nt` (notifications).
 - **`_seedTs` detection en `loadDB()`.** Pregunta al usuario antes de pisar localStorage.
@@ -139,7 +137,6 @@ Patrón usado 6 veces en este repo, fiable.
 - **No expandir scope para "completar un plan".** Si una feature ya existe, skip y reemplaza por algo cercano y útil (validado en F1, F6, F14).
 - **No insertar código al final del archivo.** Vulnerabilidad a truncado. Usar markers tempranos.
 - **No usar Edit con template literals JS largos cerca del final.** Vuelve a fallar (F10). Usar batch script con backticks.
-- **No revertir `sync.py` a sobrescritura destructiva.** El merge no-destructivo + conflicts.json es comportamiento intencional.
 - **No tocar `migrateAuth` para quitarla completa.** Hay 3 callsites; mantener como no-op defensivo.
 - **No habilitar Realtime en `consultants/pupilos/companies/activity_log`** sin pensarlo — alto coste, baja frecuencia.
 - **No actualizar snapshot fuera de `flushSupabase` exitoso o `refreshFromSupabaseIfPossible`.** Pierde el diff de cambios pendientes.
