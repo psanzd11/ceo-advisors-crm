@@ -112,7 +112,10 @@
   aside.nav:hover .logo-text{opacity:1;transform:translateX(0)}
   .logo-text .t1{font-weight:700;color:var(--ink);letter-spacing:.14em;font-size:13px;font-family:'IBM Plex Serif','IBM Plex Sans',serif}
   .logo-text .t2{font-weight:400;color:#8593A6;letter-spacing:.28em;font-size:9.5px;margin-top:3px}
-  .nav-list{padding:10px 10px;display:flex;flex-direction:column;gap:2px}
+  .nav-list{padding:10px 10px;display:flex;flex-direction:column;gap:2px;flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
+  .nav-list::-webkit-scrollbar{width:6px}
+  .nav-list::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:3px}
+  .nav-list::-webkit-scrollbar-track{background:transparent}
   .nav-section{font-family:'IBM Plex Serif','IBM Plex Sans',serif;font-size:10.5px;font-weight:600;color:#8A98AE;text-transform:uppercase;letter-spacing:.14em;padding:16px 12px 6px;white-space:nowrap;overflow:hidden;opacity:0;transition:opacity .18s}
   aside.nav:hover .nav-section{opacity:1}
   .nav-item{display:flex;align-items:center;gap:14px;padding:9px 12px;border-radius:8px;color:var(--ink-2);font-weight:500;font-size:13.5px;cursor:pointer;user-select:none;white-space:nowrap;overflow:hidden;font-family:'IBM Plex Serif','IBM Plex Sans',serif;letter-spacing:.01em}
@@ -632,7 +635,6 @@
     <div class="nav-list" id="nav">
       <div class="nav-section">Overview</div>
       <div class="nav-item" data-view="today" title="Hoy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span class="lbl">Hoy</span></div>
-      <div class="nav-item" data-view="mypipeline" title="Mi Pipeline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M5 12h14M8 18h8"/><circle cx="3" cy="6" r="1.5" fill="currentColor"/><circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="8" cy="18" r="1.5" fill="currentColor"/></svg><span class="lbl">Mi Pipeline</span></div>
       <div class="nav-item" data-view="dashboard" title="Dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17a8 8 0 0 1 16 0"/><path d="M12 17 17 10"/><circle cx="12" cy="17" r="1.2" fill="currentColor" stroke="none"/><path d="M5.5 13.5l1.2.7"/><path d="M18.5 13.5l-1.2.7"/><path d="M12 9V7.5"/></svg><span class="lbl">Dashboard</span></div>
       <div class="nav-section">CRM</div>
       <div class="nav-item" data-view="clients" title="Clientes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg><span class="lbl">Clientes</span></div>
@@ -911,8 +913,75 @@ async function refreshFromSupabaseIfPossible(){
    Deletes detectados comparando snapshot vs estado actual. */
 const SUPA_QUEUE_KEY = 'ceoadvisors_supa_queue_v1';
 const SUPA_SNAPSHOT_KEY = 'ceoadvisors_supa_snapshot_v2';
+const SUPA_LAST_ERROR_KEY = 'ceoadvisors_supa_last_error_v1';
+const SUPA_QUARANTINE_KEY = 'ceoadvisors_supa_quarantine_v1';
 let _supaFlushTimer = null;
 let _supaFlushInflight = false;
+let _supaRetryTimer = null;
+let _supaRetryStep = 0;
+const _SUPA_RETRY_DELAYS = [5000, 15000, 45000, 120000]; // 5s · 15s · 45s · 2min · stop
+
+function _supaRecordError(table, op, e){
+  try{
+    const payload = {
+      ts: Date.now(),
+      table,
+      op,
+      error: e && (e.message || String(e)) || 'unknown',
+      code: e && e.code || null,
+      details: e && e.details || null,
+      hint: e && e.hint || null,
+      httpStatus: e && (e.status || e.statusCode) || null
+    };
+    localStorage.setItem(SUPA_LAST_ERROR_KEY, JSON.stringify(payload));
+  }catch(_){}
+}
+function _supaClearError(){
+  try{ localStorage.removeItem(SUPA_LAST_ERROR_KEY); }catch(_){}
+}
+function _supaReadError(){
+  try{ return JSON.parse(localStorage.getItem(SUPA_LAST_ERROR_KEY) || 'null'); }catch(_){ return null; }
+}
+
+function _supaSanitizeQueue(){
+  // Mueve items malformados (sin id local) a cuarentena. Evita que aticen la cola eternamente.
+  let q;
+  try{ q = JSON.parse(localStorage.getItem(SUPA_QUEUE_KEY)||'{"upserts":{},"deletes":{}}'); }
+  catch(_){ return { quarantined:0 }; }
+  let quar = {};
+  try{ quar = JSON.parse(localStorage.getItem(SUPA_QUARANTINE_KEY)||'{}'); }catch(_){}
+  let moved = 0;
+  for(const t in q.upserts||{}){
+    const bag = q.upserts[t] || {};
+    for(const k of Object.keys(bag)){
+      const row = bag[k];
+      const bad = !row || typeof row!=='object' || !row.id;
+      if(bad){
+        (quar[t] = quar[t] || []).push({op:'upsert', key:k, row, ts:Date.now()});
+        delete bag[k];
+        moved++;
+      }
+    }
+    if(!Object.keys(bag).length) delete q.upserts[t];
+  }
+  for(const t in q.deletes||{}){
+    const arr = q.deletes[t] || [];
+    const keep = [];
+    for(const id of arr){
+      if(!id){
+        (quar[t] = quar[t] || []).push({op:'delete', id, ts:Date.now()});
+        moved++;
+      } else keep.push(id);
+    }
+    if(keep.length) q.deletes[t] = keep; else delete q.deletes[t];
+  }
+  if(moved){
+    try{ localStorage.setItem(SUPA_QUEUE_KEY, JSON.stringify(q)); }catch(_){}
+    try{ localStorage.setItem(SUPA_QUARANTINE_KEY, JSON.stringify(quar)); }catch(_){}
+    console.warn('[Supabase] '+moved+' item(s) malformados movidos a cuarentena');
+  }
+  return { quarantined: moved };
+}
 
 function _supaResolveUuid(type, code){
   if(!code) return null;
@@ -1181,11 +1250,85 @@ async function _supaDeleteIds(table, ids){
   return ids.length;
 }
 
+function _supaResetBannerInteractivity(){
+  const bn = document.getElementById('supaOfflineBanner');
+  if(bn){ bn.style.cursor=''; bn.onclick = null; bn.title=''; }
+}
 function supaSetSyncBanner(state, count){
   if(state==='ok'){ supaSetOfflineBanner(false); return; }
-  if(state==='syncing'){ supaSetOfflineBanner(true, `↻ Sincronizando ${count} cambio${count===1?'':'s'}…`); return; }
-  if(state==='queued'){ supaSetOfflineBanner(true, `⚠ ${count} cambio${count===1?'':'s'} pendiente${count===1?'':'s'} — reintento al recargar`); return; }
-  if(state==='offline'){ supaSetOfflineBanner(true, '⚠ Sin conexión — los cambios se guardan localmente'); return; }
+  if(state==='syncing'){ supaSetOfflineBanner(true, `↻ Sincronizando ${count} cambio${count===1?'':'s'}…`); _supaResetBannerInteractivity(); return; }
+  if(state==='queued'){
+    supaSetOfflineBanner(true, `⚠ ${count} cambio${count===1?'':'s'} pendiente${count===1?'':'s'} — toca para diagnosticar`);
+    const bn = document.getElementById('supaOfflineBanner');
+    if(bn){ bn.style.cursor='pointer'; bn.onclick = openSyncDiagnostic; bn.title='Abrir diagnóstico de sincronización'; }
+    return;
+  }
+  if(state==='offline'){ supaSetOfflineBanner(true, '⚠ Sin conexión — los cambios se guardan localmente'); _supaResetBannerInteractivity(); return; }
+}
+
+function openSyncDiagnostic(){
+  if(document.getElementById('supaDiagModal')) return;
+  const q = _supaLoadQueue();
+  const err = _supaReadError();
+  const conflicts = (()=>{ try{ return JSON.parse(localStorage.getItem(SUPA_CONFLICTS_KEY)||'{}'); }catch(_){ return {}; } })();
+  const conflictTotal = Object.values(conflicts).reduce((a,b)=>a+(Array.isArray(b)?b.length:0),0);
+  const quarantine = (()=>{ try{ return JSON.parse(localStorage.getItem(SUPA_QUARANTINE_KEY)||'{}'); }catch(_){ return {}; } })();
+  const quarantineTotal = Object.values(quarantine).reduce((a,b)=>a+(Array.isArray(b)?b.length:0),0);
+
+  const byTable = [];
+  for(const t in q.upserts||{}){
+    const n = Object.keys(q.upserts[t]||{}).length;
+    if(n) byTable.push({t, op:'upsert', n});
+  }
+  for(const t in q.deletes||{}){
+    const n = (q.deletes[t]||[]).length;
+    if(n) byTable.push({t, op:'delete', n});
+  }
+  const tableRows = byTable.length
+    ? byTable.map(r => `<tr><td>${r.t}</td><td>${r.op}</td><td style="text-align:right">${r.n}</td></tr>`).join('')
+    : '<tr><td colspan="3" class="muted" style="text-align:center;padding:8px">Cola vacía</td></tr>';
+
+  const errBlock = err
+    ? `<div style="margin-top:12px;padding:10px 12px;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.2);border-radius:8px;font-size:12.5px">
+        <div style="color:#b91c1c;font-weight:600;margin-bottom:4px">Último error · ${new Date(err.ts).toLocaleString()}</div>
+        <div><strong>${err.table}</strong> · ${err.op}${err.httpStatus?` · HTTP ${err.httpStatus}`:''}${err.code?` · code ${err.code}`:''}</div>
+        <div style="font-family:ui-monospace,monospace;color:var(--ink-2);margin-top:4px;word-break:break-word">${err.error}</div>
+        ${err.hint?`<div class="muted" style="margin-top:4px">Hint: ${err.hint}</div>`:''}
+      </div>`
+    : '<div class="muted" style="margin-top:12px;font-size:12.5px">Sin errores registrados.</div>';
+
+  const conflictBtn = conflictTotal
+    ? `<button class="btn outline" onclick="document.getElementById('supaDiagModal').remove();showConflictModalIfAny()">Ver ${conflictTotal} conflicto${conflictTotal===1?'':'s'}</button>`
+    : '';
+  const quarantineLine = quarantineTotal
+    ? `<div class="muted" style="font-size:12px;margin-top:6px">📦 ${quarantineTotal} item${quarantineTotal===1?'':'s'} en cuarentena (malformados, no se reintentan).</div>`
+    : '';
+  const resetBtn = (typeof isAdmin==='function' && isAdmin())
+    ? `<button class="btn outline" style="border-color:#dc2626;color:#dc2626" onclick="document.getElementById('supaDiagModal').remove();supaResetQueue()">Reset cola</button>`
+    : '';
+
+  const ov = document.createElement('div');
+  ov.id = 'supaDiagModal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML = `<div style="background:var(--surface);border-radius:12px;max-width:560px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.3);border:1px solid var(--line)">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+      <h3 style="margin:0;color:var(--ink)">Diagnóstico de sincronización</h3>
+      <button class="btn outline" style="padding:4px 10px" onclick="document.getElementById('supaDiagModal').remove()">×</button>
+    </div>
+    <div class="muted" style="font-size:12.5px;margin-top:2px">Estado de la cola Supabase y último error.</div>
+    <table style="width:100%;margin-top:14px;font-size:13px;border-collapse:collapse">
+      <thead><tr style="border-bottom:1px solid var(--line);color:var(--ink-2)"><th style="text-align:left;padding:6px 0">Tabla</th><th style="text-align:left">Op</th><th style="text-align:right">Items</th></tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+    ${quarantineLine}
+    ${errBlock}
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">
+      ${resetBtn}
+      ${conflictBtn}
+      <button class="btn primary" onclick="document.getElementById('supaDiagModal').remove();flushSupabase().catch(e=>console.warn(e))">Reintentar ahora</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
 }
 
 async function flushSupabase(){
@@ -1225,6 +1368,7 @@ async function flushSupabase(){
         _supaSaveQueue(q);
       }catch(e){
         console.warn('[Supabase] upsert '+t+' falló:', e.message||e);
+        _supaRecordError(t, 'upsert', e);
         errors.push({table:t, op:'upsert', error:e.message||String(e)});
       }
     }
@@ -1238,6 +1382,7 @@ async function flushSupabase(){
         _supaSaveQueue(q);
       }catch(e){
         console.warn('[Supabase] delete '+t+' falló:', e.message||e);
+        _supaRecordError(t, 'delete', e);
         errors.push({table:t, op:'delete', error:e.message||String(e)});
       }
     }
@@ -1245,10 +1390,13 @@ async function flushSupabase(){
     if(errors.length){
       const remaining = _supaQueueCount();
       supaSetSyncBanner('queued', remaining);
+      _supaScheduleRetry();
       return { errors, queued: remaining };
     }
 
     _supaUpdateSnapshot();
+    _supaClearError();
+    _supaCancelRetry();
     supaSetSyncBanner('ok');
     return { sent: total };
   }finally{
@@ -1262,8 +1410,24 @@ function scheduleSupabaseFlush(){
   _supaFlushTimer = setTimeout(()=>{ _supaFlushTimer = null; flushSupabase().catch(e=>console.warn('flush:',e)); }, 500);
 }
 
+function _supaScheduleRetry(){
+  if(_supaRetryStep >= _SUPA_RETRY_DELAYS.length) return; // stop tras agotar
+  const delay = _SUPA_RETRY_DELAYS[_supaRetryStep++];
+  if(_supaRetryTimer) clearTimeout(_supaRetryTimer);
+  _supaRetryTimer = setTimeout(()=>{
+    _supaRetryTimer = null;
+    if(!window.sb || !navigator.onLine) return; // online listener disparará el flush
+    flushSupabase().catch(e=>console.warn('retry flush:',e));
+  }, delay);
+}
+function _supaCancelRetry(){
+  if(_supaRetryTimer) clearTimeout(_supaRetryTimer);
+  _supaRetryTimer = null;
+  _supaRetryStep = 0;
+}
+
 if(typeof window !== 'undefined'){
-  window.addEventListener('online', ()=>{ flushSupabase().catch(()=>{}) });
+  window.addEventListener('online', ()=>{ _supaCancelRetry(); flushSupabase().catch(()=>{}) });
 }
 
 /* ──────────── 2.1 Storage adapter (preparado para Supabase futura) ──────
@@ -2035,7 +2199,6 @@ function render(){setTimeout(()=>{try{renderBulkBar()}catch(e){}try{updateTabTit
   else{const ov=document.getElementById('loginOverlay');if(ov)ov.remove()}
   refreshNotifBadge();
   if(state.view==='today')return renderToday(root);
-  if(state.view==='mypipeline')return renderMyPipeline(root);
   if(state.view==='dashboard')return renderDashboard(root);
   if(state.view==='clients')return renderClients(root);
   if(state.view==='companies')return renderCompanies(root);
@@ -2915,6 +3078,11 @@ function renderDeals(root){
   const wonCountYTD=deals.filter(d=>d.stage==='won'&&d.closeDate&&new Date(d.closeDate)>=yrStart).length;
   const conversionRate=totalOpen>0?(weightedPipeline/totalOpen*100):0;
   const totalForecast=weightedPipeline+wonYTD;
+  const u=currentUser();
+  const today=todayISO();
+  const myActs=scopedActivities();
+  const tasksOpen=myActs.filter(a=>a.type==='task'&&!a.done&&a.assignedTo===u.id);
+  const tasksOverdue=tasksOpen.filter(a=>a.date&&a.date<today);
   root.innerHTML=`
     <div class="page-head">
       <div><div class="page-title">Pipeline</div><div class="page-sub">Panorama del pipeline y forecast por etapa${filter!=='all'?' · Filtro activo: <b>'+dealType(filter).label+'</b>':''}</div></div>
@@ -2972,7 +3140,12 @@ function renderDeals(root){
           </tbody>
         </table>
       </div>
-    </div>`;
+    </div>
+    ${tasksOpen.length?`<div class="card mt-m"><div class="hd"><h3>Mis tareas pendientes</h3><span class="muted" style="font-size:11.5px">${tasksOverdue.length} vencidas</span></div>
+      <div class="bd"><div style="display:flex;flex-direction:column;gap:6px">
+        ${tasksOpen.slice(0,15).map(a=>{const overdue=a.date&&a.date<today;return `<div class="click" onclick="openActivity('${a.id}')" style="cursor:pointer;padding:8px 10px;background:var(--surface-2);border-radius:6px;border-left:3px solid ${overdue?'#dc2626':'var(--brand)'}"><div class="flex jb ac"><span class="sb" style="font-size:12.5px;color:var(--ink)">${a.title}</span><span class="muted" style="font-size:11.5px;color:${overdue?'#dc2626':'inherit'}">${a.date||'sin fecha'}</span></div></div>`}).join('')}
+      </div></div>
+    </div>`:''}`;
   renderPipeline(deals);
   $('#viewList').addEventListener('click',()=>{const el=$('#dealList'),p=$('#pipeline');const hidden=el.style.display==='none';el.style.display=hidden?'block':'none';p.style.display=hidden?'none':'grid';$('#viewList').textContent=hidden?'Pipeline':'Lista'});
 }
@@ -6096,51 +6269,6 @@ if('serviceWorker' in navigator && location.protocol !== 'file:'){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
 
-/* ──────────── 3.5 Mi Pipeline (vista per-consultor) ──────────── */
-function renderMyPipeline(root){
-  const u=currentUser();if(!u){root.innerHTML='';return}
-  const myDeals=scopedDeals();
-  const myClients=scopedClients();
-  const myActs=scopedActivities();
-  const open=myDeals.filter(d=>d.stage!=='won'&&d.stage!=='lost');
-  const won=myDeals.filter(d=>d.stage==='won');
-  const lost=myDeals.filter(d=>d.stage==='lost');
-  const openV=open.reduce((s,d)=>s+(d.amount||0),0);
-  const wonV=won.reduce((s,d)=>s+(d.amount||0),0);
-  /* F4.3: forecast ponderado por probabilidad de cierre del stage */
-  const forecastV=open.reduce((s,d)=>s+((d.amount||0)*(getStageProb(d.stage)||0)/100),0);
-  const today=todayISO();
-  const tasksOpen=myActs.filter(a=>a.type==='task'&&!a.done&&a.assignedTo===u.id);
-  const tasksOverdue=tasksOpen.filter(a=>a.date&&a.date<today);
-  const stages=['prospect','qualified','proposal','negotiation'];
-  const stageLabels={prospect:'Prospect',qualified:'Qualified',proposal:'Propuesta',negotiation:'Negociación'};
-  const stageColors={prospect:'#94a3b8',qualified:'#3b82f6',proposal:'#a78bfa',negotiation:'#f59e0b'};
-  const byStage=stages.map(s=>{const ds=open.filter(d=>d.stage===s);return{stage:s,deals:ds,total:ds.reduce((a,d)=>a+(d.amount||0),0)}});
-  root.innerHTML=`
-    <div class="page-head">
-      <div><div class="page-title">Mi Pipeline</div><div class="page-sub">${u.name} · ${u.role}${u.region?' · '+u.region:''}</div></div>
-      <div class="flex ac gap-s"><button class="btn primary" onclick="openNew('deal')">+ Nuevo deal</button></div>
-    </div>
-    <div class="kpis" style="grid-template-columns:repeat(5,1fr)">
-      ${kpi('Pipeline abierto',fmtMoney(openV),open.length+' deals activos',true,'flow')}
-      ${kpi('Forecast pond.',fmtMoney(forecastV),'amount × prob por stage',true,'flow')}
-      ${kpi('Won YTD',fmtMoney(wonV),won.length+' cerrados',true,'check')}
-      ${kpi('Mis clientes',myClients.length,'en mi cobertura',true,'users')}
-      ${kpi('Tareas pendientes',tasksOpen.length,tasksOverdue.length+' vencidas',tasksOverdue.length===0,'wallet')}
-    </div>
-    <div class="card mt-m"><div class="hd"><h3>Por etapa</h3><span class="muted" style="font-size:11.5px">deals abiertos asignados a ti</span></div>
-      <div class="bd"><div style="display:grid;grid-template-columns:repeat(${stages.length},1fr);gap:12px">
-        ${byStage.map(b=>`<div style="background:var(--surface-2);border-radius:8px;border-top:3px solid ${stageColors[b.stage]};padding:10px"><div style="font-weight:700;color:var(--ink);font-size:12.5px;margin-bottom:2px">${stageLabels[b.stage]}</div><div class="muted" style="font-size:11.5px;margin-bottom:8px">${b.deals.length} deals · ${fmtMoney(b.total)}</div>${b.deals.slice(0,5).map(d=>{const cli=findClient(d.clientId);return `<div class="click" onclick="openDeal('${d.id}')" style="background:var(--surface);border-radius:6px;padding:8px;margin-bottom:6px;cursor:pointer;border:1px solid var(--line)"><div class="flex jb ac"><div class="sb" style="font-size:12.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${d.title}</div>${dealAgeBadge(d)}</div><div class="muted" style="font-size:11px">${cli?cli.name:'—'} · ${fmtMoney(d.amount)}</div></div>`}).join('')||'<div class="muted" style="font-size:11.5px;text-align:center;padding:6px">—</div>'}${b.deals.length>5?`<div class="muted" style="font-size:11px;text-align:center">+${b.deals.length-5} más</div>`:''}</div>`).join('')}
-      </div></div>
-    </div>
-    ${tasksOpen.length?`<div class="card mt-m"><div class="hd"><h3>Mis tareas pendientes</h3><span class="muted" style="font-size:11.5px">${tasksOverdue.length} vencidas</span></div>
-      <div class="bd"><div style="display:flex;flex-direction:column;gap:6px">
-        ${tasksOpen.slice(0,15).map(a=>{const overdue=a.date&&a.date<today;return `<div class="click" onclick="openActivity('${a.id}')" style="cursor:pointer;padding:8px 10px;background:var(--surface-2);border-radius:6px;border-left:3px solid ${overdue?'#dc2626':'var(--brand)'}"><div class="flex jb ac"><span class="sb" style="font-size:12.5px;color:var(--ink)">${a.title}</span><span class="muted" style="font-size:11.5px;color:${overdue?'#dc2626':'inherit'}">${a.date||'sin fecha'}</span></div></div>`}).join('')}
-      </div></div>
-    </div>`:''}
-  `;
-}
-
 /* ──────────── 3.4 Bulk CSV import (clientes/empresas/pupilos) ──────────── */
 function csvParse(text){
   /* Parser RFC 4180 simple: respeta comillas, escape "" dentro de comillas. */
@@ -7084,7 +7212,6 @@ function openSettingsModal(){
           <kbd style="background:var(--surface-3);padding:1px 6px;border-radius:3px;font-size:11px">c</kbd> Clientes ·
           <kbd style="background:var(--surface-3);padding:1px 6px;border-radius:3px;font-size:11px">e</kbd> Empresas ·
           <kbd style="background:var(--surface-3);padding:1px 6px;border-radius:3px;font-size:11px">u</kbd> Pupilos ·
-          <kbd style="background:var(--surface-3);padding:1px 6px;border-radius:3px;font-size:11px">m</kbd> Mi Pipeline ·
           <kbd style="background:var(--surface-3);padding:1px 6px;border-radius:3px;font-size:11px">f</kbd> Feed
         </div>
       </div>
@@ -7106,7 +7233,7 @@ function openSettingsModal(){
 /* ──────────── F14.2 g+letra navigation (vim-style) ──────────── */
 let _gKeyArmed=false;
 let _gKeyTimer=null;
-const G_NAV_MAP={h:'today',d:'dashboard',p:'deals',c:'clients',e:'companies',u:'pupilos',m:'mypipeline',f:'feed',a:'activities',n:'consultants',t:'templates'};
+const G_NAV_MAP={h:'today',d:'dashboard',p:'deals',c:'clients',e:'companies',u:'pupilos',f:'feed',a:'activities',n:'consultants',t:'templates'};
 document.addEventListener('keydown',e=>{
   if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName))return;
   if(e.ctrlKey||e.metaKey||e.altKey)return;
@@ -7117,7 +7244,7 @@ document.addEventListener('keydown',e=>{
     const tip=document.createElement('div');
     tip.id='gNavTip';
     tip.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:8px 14px;border-radius:20px;z-index:1000;font-size:12px;font-family:monospace';
-    tip.textContent='g_ → h:Hoy d:Dashboard p:Pipeline c:Clientes e:Empresas u:Pupilos m:Mi Pipeline f:Feed';
+    tip.textContent='g_ → h:Hoy d:Dashboard p:Pipeline c:Clientes e:Empresas u:Pupilos f:Feed';
     document.body.appendChild(tip);
     setTimeout(()=>{const t=document.getElementById('gNavTip');if(t)t.remove()},1500);
     return;
@@ -7340,7 +7467,9 @@ try{ applyAdminToolsVisibility() }catch(e){}
        Esto evita que el cliente genere UUIDs ficticios para filas que ya existen
        en backend pero cuyo _supaId local no estaba poblado (causa del bug 409). */
     await refreshFromSupabaseIfPossible();
+    try{ _supaSanitizeQueue(); }catch(e){ console.warn('boot sanitize:',e) }
     try{ await flushSupabase() }catch(e){ console.warn('boot flush:',e) }
+    try{ showConflictModalIfAny(); }catch(e){ console.warn('boot conflicts:',e) }
     const email=(session.user.email||'').toLowerCase();
     const u=DB.consultants.find(c=>(c.email||'').toLowerCase()===email);
     if(u){
