@@ -6,6 +6,9 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const CLAUDE_MODEL = Deno.env.get("CLAUDE_MODEL") ?? "claude-sonnet-4-6";
 const RATE_LIMIT_MAX = parseInt(Deno.env.get("CHAT_RATE_LIMIT_MAX") ?? "30", 10);
+if (!Number.isFinite(RATE_LIMIT_MAX) || RATE_LIMIT_MAX <= 0) {
+  throw new Error(`CHAT_RATE_LIMIT_MAX must be a positive integer, got: ${Deno.env.get("CHAT_RATE_LIMIT_MAX")}`);
+}
 const MAX_BODY_BYTES = 200_000;
 const MAX_SCOPED_BYTES = 100_000;
 
@@ -45,32 +48,6 @@ Deno.serve(async (req) => {
     return jsonError(401, "Invalid JWT");
   }
   const userId = userData.user.id;
-
-  // 3. Rate limit (Postgres RPC)
-  const hourBucket = Math.floor(Date.now() / 3_600_000);
-  const { data: rlData, error: rlErr } = await adminClient.rpc("chat_rate_limit_check", {
-    p_user: userId,
-    p_bucket: hourBucket,
-    p_max: RATE_LIMIT_MAX,
-  });
-  if (rlErr) {
-    console.error("rate_limit_rpc_error", rlErr);
-    return jsonError(500, "Rate limit check failed");
-  }
-  const rl = Array.isArray(rlData) ? rlData[0] : rlData;
-  if (!rl?.allowed) {
-    return new Response(
-      JSON.stringify({ error: "Rate limit exceeded", reset_at: rl?.reset_at }),
-      {
-        status: 429,
-        headers: {
-          ...CORS_HEADERS,
-          "Content-Type": "application/json",
-          "X-RateLimit-Reset": String(rl?.reset_at ?? ""),
-        },
-      },
-    );
-  }
 
   // 4. Parse + validate body
   const rawBody = await req.text();
@@ -114,7 +91,33 @@ Deno.serve(async (req) => {
     return jsonError(413, `scopedData exceeds ${MAX_SCOPED_BYTES} bytes`);
   }
 
-  // 5. Build system prompt blocks
+  // 5. Rate limit (Postgres RPC)
+  const hourBucket = Math.floor(Date.now() / 3_600_000);
+  const { data: rlData, error: rlErr } = await adminClient.rpc("chat_rate_limit_check", {
+    p_user: userId,
+    p_bucket: hourBucket,
+    p_max: RATE_LIMIT_MAX,
+  });
+  if (rlErr) {
+    console.error("rate_limit_rpc_error", rlErr);
+    return jsonError(500, "Rate limit check failed");
+  }
+  const rl = Array.isArray(rlData) ? rlData[0] : rlData;
+  if (!rl?.allowed) {
+    return new Response(
+      JSON.stringify({ error: "Rate limit exceeded", reset_at: rl?.reset_at }),
+      {
+        status: 429,
+        headers: {
+          ...CORS_HEADERS,
+          "Content-Type": "application/json",
+          "X-RateLimit-Reset": String(rl?.reset_at ?? ""),
+        },
+      },
+    );
+  }
+
+  // 6. Build system prompt blocks
   const userMeta = {
     date: new Date().toISOString().slice(0, 10),
     userName: userData.user.email ?? "consultor",
@@ -128,7 +131,7 @@ Deno.serve(async (req) => {
     { type: "text", text: buildMetadataBlock(userMeta) },
   ];
 
-  // 6. Call Anthropic with streaming
+  // 7. Call Anthropic with streaming
   let anthropicRes: Response;
   try {
     anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
@@ -157,7 +160,7 @@ Deno.serve(async (req) => {
     return jsonError(502, "Anthropic upstream error", { upstream_status: anthropicRes.status });
   }
 
-  // 7. Stream SSE relay → cliente
+  // 8. Stream SSE relay → cliente
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -187,11 +190,11 @@ Deno.serve(async (req) => {
             }
           }
         }
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       } catch (e) {
         console.error("stream_relay_error", e);
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "stream interrupted" })}\n\n`));
       } finally {
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       }
     },
