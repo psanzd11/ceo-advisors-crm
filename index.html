@@ -615,6 +615,77 @@
     /* Header de impresión */
     body::before { content:"CEO Advisors CRM — Confidencial"; display:block; font-size:10pt; color:#666; padding:8px; border-bottom:1px solid #ccc; margin-bottom:14px }
   }
+/* ────────── Chatbot IA Widget (F-Chatbot) ────────── */
+#chatFab{
+  position:fixed; right:20px; bottom:20px; z-index:9000;
+  width:56px; height:56px; border-radius:50%;
+  background:#0071e3; color:#fff; border:0; cursor:pointer;
+  font-size:24px; display:flex; align-items:center; justify-content:center;
+  box-shadow:0 6px 18px rgba(0,113,227,.45);
+  transition:transform .15s ease;
+}
+#chatFab:hover{transform:scale(1.05)}
+#chatFab[hidden]{display:none}
+#chatFabBadge{
+  position:absolute; top:6px; right:6px; width:10px; height:10px; border-radius:50%;
+  background:#ff3b30; border:2px solid #fff;
+}
+#chatPopup{
+  position:fixed; right:20px; bottom:88px; z-index:9001;
+  width:400px; max-width:calc(100vw - 24px); height:520px; max-height:calc(100vh - 120px);
+  background:var(--bg,#fff); color:var(--text,#1d1d1f);
+  border:1px solid rgba(0,0,0,.08); border-radius:14px;
+  box-shadow:0 16px 48px rgba(0,0,0,.18);
+  display:flex; flex-direction:column; overflow:hidden;
+}
+#chatPopup[hidden]{display:none}
+#chatPopup header{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 14px; border-bottom:1px solid rgba(0,0,0,.06);
+  background:rgba(0,0,0,.02);
+}
+#chatPopup header h3{margin:0; font-size:14px; font-weight:600}
+#chatPopup .chat-actions{display:flex; gap:6px}
+#chatPopup .chat-actions button{
+  background:none; border:0; cursor:pointer; padding:4px 8px;
+  font-size:14px; color:var(--text,#1d1d1f); opacity:.65;
+}
+#chatPopup .chat-actions button:hover{opacity:1}
+#chatMessages{
+  flex:1; overflow-y:auto; padding:12px;
+  display:flex; flex-direction:column; gap:8px;
+  font-size:13px; line-height:1.45;
+}
+.chat-msg{max-width:88%; padding:8px 12px; border-radius:14px; word-wrap:break-word}
+.chat-msg-user{align-self:flex-end; background:#0071e3; color:#fff; border-bottom-right-radius:4px}
+.chat-msg-assistant{align-self:flex-start; background:#f0f0f2; color:#1d1d1f; border-bottom-left-radius:4px}
+.chat-msg-error{align-self:stretch; background:#fff0f0; color:#c00; padding:8px 12px; border-radius:8px; font-size:12px}
+.chat-msg-info{align-self:stretch; background:#fffbe6; color:#7a5a00; padding:6px 10px; border-radius:6px; font-size:11px}
+.chat-msg-assistant table{border-collapse:collapse; margin:4px 0; font-size:12px}
+.chat-msg-assistant th, .chat-msg-assistant td{border:1px solid rgba(0,0,0,.08); padding:3px 6px; text-align:left}
+.chat-msg-assistant th{background:rgba(0,0,0,.04); font-weight:600}
+.chat-msg-assistant code{background:rgba(0,0,0,.06); padding:1px 4px; border-radius:3px; font-family:ui-monospace,monospace; font-size:11px}
+.chat-msg-assistant pre{background:rgba(0,0,0,.06); padding:6px 8px; border-radius:6px; overflow-x:auto; font-size:11px}
+.chat-msg-assistant ul, .chat-msg-assistant ol{padding-left:18px; margin:4px 0}
+.chat-msg-assistant a{color:#0071e3; text-decoration:underline}
+.chat-cursor::after{content:"▌"; opacity:.5; animation:chat-blink 1s steps(1) infinite}
+@keyframes chat-blink{50%{opacity:0}}
+#chatForm{display:flex; gap:6px; padding:8px 10px; border-top:1px solid rgba(0,0,0,.06); background:rgba(0,0,0,.02)}
+#chatInput{
+  flex:1; resize:none; padding:6px 10px;
+  border:1px solid rgba(0,0,0,.12); border-radius:8px;
+  font-family:inherit; font-size:13px; background:var(--bg,#fff); color:var(--text,#1d1d1f);
+}
+#chatInput:focus{outline:none; border-color:#0071e3}
+#chatSend{
+  background:#0071e3; color:#fff; border:0; cursor:pointer;
+  width:36px; border-radius:8px; font-size:16px; font-weight:600;
+  align-self:stretch;
+}
+#chatSend:disabled{background:#999; cursor:not-allowed}
+@media (max-width:480px){
+  #chatPopup{right:8px; bottom:80px; width:calc(100vw - 16px); height:calc(100vh - 100px)}
+}
 </style>
 </head>
 <body>
@@ -7450,11 +7521,316 @@ function applyAdminToolsVisibility(){
   if(btn) btn.style.display = (typeof isAdmin==='function' && isAdmin()) ? '' : 'none';
 }
 
+/* ────────── Chatbot IA Widget (F-Chatbot) ────────── */
+const ChatWidget = (function(){
+  const KEY = 'ceoadvisors_chat_history_v1';
+  const MAX_MESSAGES = 50;
+  const MAX_SCOPED_BYTES = 100_000;
+  const ENDPOINT = SUPABASE_URL + '/functions/v1/chat-assistant';
+
+  const state = {
+    open: false,
+    messages: [],
+    loading: false,
+    abortCtrl: null,
+    unread: 0,
+    streamingEl: null,
+  };
+
+  // ─── Persistencia localStorage ───
+  function load(){
+    try{
+      const raw = localStorage.getItem(KEY);
+      if(!raw) return;
+      const parsed = JSON.parse(raw);
+      if(Array.isArray(parsed)) state.messages = parsed.slice(-MAX_MESSAGES);
+    }catch(e){ console.warn('[chat] load failed', e); }
+  }
+  function save(){
+    try{
+      if(state.messages.length > MAX_MESSAGES){
+        state.messages = state.messages.slice(-MAX_MESSAGES);
+      }
+      localStorage.setItem(KEY, JSON.stringify(state.messages));
+    }catch(e){ console.warn('[chat] save failed', e); }
+  }
+  function clearHistory(){
+    state.messages = [];
+    localStorage.removeItem(KEY);
+    render();
+  }
+
+  // ─── Markdown parser inline (subset) ───
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function safeHref(url){
+    return /^https?:\/\//i.test(url) ? url : '#';
+  }
+  function parseInline(text){
+    let out = escapeHtml(text);
+    out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, t, u) =>
+      `<a href="${escapeHtml(safeHref(u))}" target="_blank" rel="noopener">${t}</a>`);
+    out = out.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+    out = out.replace(/(^|[^\*])\*([^*\n]+)\*/g, '$1<i>$2</i>');
+    out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+    return out;
+  }
+  function parseMarkdown(md){
+    const lines = (md || '').split('\n');
+    const out = [];
+    let i = 0;
+    while(i < lines.length){
+      const line = lines[i];
+      if(/^```/.test(line)){
+        const body = [];
+        i++;
+        while(i < lines.length && !/^```/.test(lines[i])){ body.push(escapeHtml(lines[i])); i++; }
+        i++;
+        out.push('<pre>'+body.join('\n')+'</pre>');
+        continue;
+      }
+      if(/^\s*\|.+\|\s*$/.test(line) && i+1 < lines.length && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i+1])){
+        const headers = line.trim().replace(/^\||\|$/g,'').split('|').map(s=>s.trim());
+        i += 2;
+        const rows = [];
+        while(i < lines.length && /^\s*\|.+\|\s*$/.test(lines[i])){
+          rows.push(lines[i].trim().replace(/^\||\|$/g,'').split('|').map(s=>s.trim()));
+          i++;
+        }
+        out.push('<table><thead><tr>'+headers.map(h=>'<th>'+parseInline(h)+'</th>').join('')+'</tr></thead><tbody>'+
+          rows.map(r=>'<tr>'+r.map(c=>'<td>'+parseInline(c)+'</td>').join('')+'</tr>').join('')+'</tbody></table>');
+        continue;
+      }
+      if(/^\s*[-*]\s+/.test(line) || /^\s*\d+\.\s+/.test(line)){
+        const ordered = /^\s*\d+\.\s+/.test(line);
+        const items = [];
+        while(i < lines.length && (/^\s*[-*]\s+/.test(lines[i]) || /^\s*\d+\.\s+/.test(lines[i]))){
+          items.push(lines[i].replace(/^\s*(?:[-*]|\d+\.)\s+/, ''));
+          i++;
+        }
+        out.push('<'+(ordered?'ol':'ul')+'>'+items.map(it=>'<li>'+parseInline(it)+'</li>').join('')+'</'+(ordered?'ol':'ul')+'>');
+        continue;
+      }
+      if(line.trim()===''){ out.push(''); i++; continue; }
+      out.push('<p>'+parseInline(line)+'</p>');
+      i++;
+    }
+    return out.join('');
+  }
+
+  // ─── scopedData builder ───
+  function buildScopedData(){
+    if(typeof scopedDeals !== 'function') return {};
+    const strip = arr => arr.map(o => {
+      const c = {...o};
+      delete c._supaId; delete c._supaUpdatedAt;
+      return c;
+    });
+    const me = DB.currentUserId;
+    let data = {
+      deals: strip(scopedDeals()),
+      clients: strip(scopedClients()),
+      companies: strip(scopedCompanies()),
+      activities: strip(scopedActivities()),
+      pupilos: strip((DB.pupilos||[]).filter(p => p.mentor === me || isAdmin())),
+      consultants: (DB.consultants||[]).map(c => ({code:c.id, name:c.name, role:c.role})),
+    };
+    if(JSON.stringify(data).length > MAX_SCOPED_BYTES){
+      const sortDesc = a => a.slice().sort((x,y) => (y.updatedAt||y.date||'').localeCompare(x.updatedAt||x.date||''));
+      data = {
+        deals: sortDesc(data.deals).slice(0,100),
+        clients: sortDesc(data.clients).slice(0,50),
+        companies: data.companies.slice(0,50),
+        activities: sortDesc(data.activities).slice(0,30),
+        pupilos: data.pupilos.slice(0,30),
+        consultants: data.consultants,
+        _truncated: true,
+      };
+    }
+    return data;
+  }
+
+  // ─── Render ───
+  function render(){
+    const list = document.getElementById('chatMessages');
+    if(!list) return;
+    list.innerHTML = '';
+    state.messages.forEach(m => {
+      const div = document.createElement('div');
+      div.className = 'chat-msg chat-msg-' + m.role;
+      if(m.role === 'assistant'){
+        div.innerHTML = parseMarkdown(m.content || '');
+      }else{
+        div.textContent = m.content;
+      }
+      list.appendChild(div);
+    });
+    list.scrollTop = list.scrollHeight;
+    const badge = document.getElementById('chatFabBadge');
+    if(badge){ badge.hidden = state.unread === 0; }
+  }
+  function appendStreaming(text){
+    if(!state.streamingEl){
+      const list = document.getElementById('chatMessages');
+      const div = document.createElement('div');
+      div.className = 'chat-msg chat-msg-assistant chat-cursor';
+      list.appendChild(div);
+      state.streamingEl = div;
+    }
+    state.streamingEl._buffer = (state.streamingEl._buffer || '') + text;
+    state.streamingEl.innerHTML = parseMarkdown(state.streamingEl._buffer);
+    const list = document.getElementById('chatMessages');
+    list.scrollTop = list.scrollHeight;
+  }
+  function appendError(msg){
+    const list = document.getElementById('chatMessages');
+    const div = document.createElement('div');
+    div.className = 'chat-msg-error';
+    div.textContent = msg;
+    list.appendChild(div);
+    list.scrollTop = list.scrollHeight;
+  }
+
+  // ─── Send con SSE ───
+  async function send(text){
+    if(state.loading){ state.abortCtrl?.abort(); }
+    if(!text.trim()) return;
+
+    state.messages.push({role:'user', content:text});
+    save();
+    render();
+
+    state.loading = true;
+    state.streamingEl = null;
+    state.abortCtrl = new AbortController();
+    const sendBtn = document.getElementById('chatSend');
+    if(sendBtn) sendBtn.disabled = true;
+
+    try{
+      const { data:{session} } = await sb.auth.getSession();
+      if(!session){ throw new Error('NO_SESSION'); }
+
+      const body = { messages: state.messages, scopedData: buildScopedData() };
+      const res = await fetch(ENDPOINT, {
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json',
+          'Authorization':'Bearer ' + session.access_token,
+        },
+        body: JSON.stringify(body),
+        signal: state.abortCtrl.signal,
+      });
+
+      if(res.status === 401){ appendError('Tu sesión caducó. Recarga la página.'); return; }
+      if(res.status === 429){
+        const reset = res.headers.get('X-RateLimit-Reset');
+        const min = reset ? Math.max(1, Math.ceil((parseInt(reset,10)*1000 - Date.now())/60000)) : '?';
+        appendError(`Has alcanzado el límite de 30 mensajes/hora. Reintenta en ~${min} min.`);
+        return;
+      }
+      if(!res.ok || !res.body){ appendError('Error del servidor. Reintenta más tarde.'); return; }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let fullText = '';
+      while(true){
+        const { done, value } = await reader.read();
+        if(done) break;
+        buf += decoder.decode(value, {stream:true});
+        let nl;
+        while((nl = buf.indexOf('\n\n')) >= 0){
+          const block = buf.slice(0, nl);
+          buf = buf.slice(nl + 2);
+          if(!block.startsWith('data: ')) continue;
+          const payload = block.slice(6).trim();
+          if(payload === '[DONE]') continue;
+          try{
+            const parsed = JSON.parse(payload);
+            if(parsed.text){
+              fullText += parsed.text;
+              appendStreaming(parsed.text);
+            }
+            if(parsed.error){ appendError(parsed.error); }
+          }catch{/* skip malformed */}
+        }
+      }
+      if(fullText){
+        state.messages.push({role:'assistant', content:fullText});
+        save();
+      }
+    }catch(err){
+      if(err.name === 'AbortError'){ /* silent */ }
+      else if(err.message === 'NO_SESSION'){ appendError('No estás logueado. Recarga la página.'); }
+      else{ appendError('Sin conexión. Reintenta.'); console.error('[chat]', err); }
+    }finally{
+      state.loading = false;
+      state.abortCtrl = null;
+      if(state.streamingEl){
+        state.streamingEl.classList.remove('chat-cursor');
+        state.streamingEl = null;
+      }
+      if(sendBtn) sendBtn.disabled = false;
+      if(!state.open) state.unread++;
+      render();
+    }
+  }
+
+  // ─── Open/close ───
+  function open(){
+    state.open = true;
+    state.unread = 0;
+    document.getElementById('chatPopup').hidden = false;
+    setTimeout(()=>document.getElementById('chatInput')?.focus(), 50);
+    render();
+  }
+  function close(){
+    state.open = false;
+    document.getElementById('chatPopup').hidden = true;
+  }
+  function toggle(){ state.open ? close() : open(); }
+
+  // ─── Wire-up DOM ───
+  function init(){
+    load();
+    const fab = document.getElementById('chatFab');
+    const popup = document.getElementById('chatPopup');
+    if(!fab || !popup) return;
+
+    fab.addEventListener('click', toggle);
+    document.getElementById('chatClose').addEventListener('click', close);
+    document.getElementById('chatClear').addEventListener('click', () => {
+      if(confirm('¿Borrar el historial del chat?')) clearHistory();
+    });
+
+    const form = document.getElementById('chatForm');
+    const input = document.getElementById('chatInput');
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = input.value;
+      input.value = '';
+      send(text);
+    });
+    input.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter' && !e.shiftKey){
+        e.preventDefault();
+        form.requestSubmit();
+      }
+      if(e.key === 'Escape'){ close(); }
+    });
+    render();
+  }
+
+  return { init, open, close, toggle, _state: state };
+})();
+
 /* boot */
 state.authed=false;
 state.view='today';
 renderUserSwitcher();
 render();
+try{ ChatWidget.init() }catch(e){ console.warn('chat init failed', e); }
 try{ applyHideDemoBtnState() }catch(e){}
 try{ applyAdminToolsVisibility() }catch(e){}
 /* F15.3b/c: auto-login si Supabase tiene sesión activa (magic link o session persistida) */
@@ -7486,5 +7862,21 @@ try{ applyAdminToolsVisibility() }catch(e){}
   }catch(e){console.warn('boot supabase:',e)}
 })();
 </script>
+<!-- Chatbot IA L2 (F-Chatbot) -->
+<button id="chatFab" type="button" aria-label="Asistente IA" title="Asistente IA">💬<span id="chatFabBadge" hidden></span></button>
+<div id="chatPopup" role="dialog" aria-label="Asistente IA" hidden>
+  <header>
+    <h3>Asistente IA</h3>
+    <div class="chat-actions">
+      <button type="button" id="chatClear" aria-label="Borrar historial" title="Borrar historial">🗑</button>
+      <button type="button" id="chatClose" aria-label="Cerrar" title="Cerrar">✕</button>
+    </div>
+  </header>
+  <div id="chatMessages" aria-live="polite"></div>
+  <form id="chatForm">
+    <textarea id="chatInput" placeholder="Pregunta sobre tus deals, clientes, actividades…" rows="2" maxlength="2000"></textarea>
+    <button type="submit" id="chatSend" aria-label="Enviar">↑</button>
+  </form>
+</div>
 </body>
 </html>
