@@ -11,9 +11,14 @@
 <meta name="apple-mobile-web-app-title" content="CEO CRM">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Serif:wght@500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
-<script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
+<link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Serif:wght@500;600;700&display=swap"
+      media="print" onload="this.media='all'">
+<noscript>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Serif:wght@500;600;700&display=swap">
+</noscript>
+<script defer src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
 <style>
   :root{
     --bg:#F6F8FB;--panel:#FFFFFF;--ink:#0F1E33;--ink-2:#3A4A63;--muted:#6B7A90;
@@ -1569,6 +1574,7 @@ function applyMigrations(d){
 let DB=loadDB();
 /* F7.1: tras cargar, generar reminders automáticos y limpiar los obsoletos */
 try{cleanupStaleReminders();generateAutoReminders()}catch(e){console.warn('reminders:',e)}
+let _pendingSeedUpdate=null;
 function loadDB(){
   try{
     const r=Storage.read();
@@ -1576,16 +1582,44 @@ function loadDB(){
       const d=JSON.parse(r);
       const fresh=seedData();
       if(fresh._seedTs && d._seedTs !== fresh._seedTs){
-        if(confirm('Detectados nuevos datos en la plantilla (regenerada el '+fresh._seedTs.replace('T',' a las ')+').\n\n¿Recargar el CRM con los datos actualizados?\n\nEsto borra cambios locales no sincronizados. Cancela si quieres exportar antes.')){
-          applyMigrations(fresh);
-          Storage.write(JSON.stringify(fresh));
-          return fresh;
-        }
+        /* Perf: NO bloquear el critical path con confirm(). Marca el update
+           pendiente y deja que el boot dispare un banner no-bloqueante. */
+        _pendingSeedUpdate={newSeedTs:fresh._seedTs};
       }
       migrateAuth(d);applyMigrations(d);return d;
     }
   }catch(e){console.error('loadDB:',e)}
   const d=seedData();applyMigrations(d);Storage.write(JSON.stringify(d));return d;
+}
+function applyPendingSeedUpdate(){
+  if(!_pendingSeedUpdate)return;
+  const fresh=seedData();
+  applyMigrations(fresh);
+  Storage.write(JSON.stringify(fresh));
+  location.reload();
+}
+function showSeedUpdateBannerIfNeeded(){
+  if(!_pendingSeedUpdate)return;
+  if(document.getElementById('seedUpdateBanner'))return;
+  const ts=(_pendingSeedUpdate.newSeedTs||'').replace('T',' a las ');
+  const b=document.createElement('div');
+  b.id='seedUpdateBanner';
+  b.style.cssText='position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:9999;background:#0F1E33;color:#fff;padding:12px 16px;border-radius:10px;box-shadow:0 8px 28px rgba(15,30,51,.18);font:500 13px/1.4 "IBM Plex Sans",system-ui,sans-serif;max-width:560px;display:flex;gap:14px;align-items:center;flex-wrap:wrap';
+  const msg=document.createElement('span');
+  msg.style.cssText='flex:1;min-width:240px';
+  msg.textContent='Nuevos datos en la plantilla ('+ts+'). Recargar borra cambios locales no sincronizados.';
+  const btnA=document.createElement('button');
+  btnA.type='button';
+  btnA.textContent='Actualizar datos';
+  btnA.style.cssText='background:#2E7BC4;border:0;color:#fff;padding:6px 12px;border-radius:6px;font:600 12px "IBM Plex Sans",system-ui,sans-serif;cursor:pointer';
+  btnA.onclick=applyPendingSeedUpdate;
+  const btnD=document.createElement('button');
+  btnD.type='button';
+  btnD.textContent='Ignorar';
+  btnD.style.cssText='background:transparent;border:1px solid rgba(255,255,255,.4);color:#fff;padding:6px 12px;border-radius:6px;font:500 12px "IBM Plex Sans",system-ui,sans-serif;cursor:pointer';
+  btnD.onclick=()=>{_pendingSeedUpdate=null;b.remove();};
+  b.appendChild(msg);b.appendChild(btnA);b.appendChild(btnD);
+  document.body.appendChild(b);
 }
 function reloadFromTemplate(){
   if(!isAdmin()){alert('Solo admins pueden recargar la plantilla.');return}
@@ -7860,6 +7894,7 @@ render();
 try{ ChatWidget.init() }catch(e){ console.warn('chat init failed', e); }
 try{ applyHideDemoBtnState() }catch(e){}
 try{ applyAdminToolsVisibility() }catch(e){}
+try{ showSeedUpdateBannerIfNeeded() }catch(e){ console.warn('seed banner:',e) }
 /* F15.3b/c: auto-login si Supabase tiene sesión activa (magic link o session persistida) */
 (async function bootSupabase(){
   if(!sb)return;
