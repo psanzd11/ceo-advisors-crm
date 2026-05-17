@@ -15,7 +15,9 @@ CRM single-file (HTML + inline CSS/JS, vanilla, sin build) para gestionar client
 | `manifest.json` + `sw.js` | PWA básico |
 | `migrate_to_supabase.py` | Importador one-shot Excel→Supabase (UUIDs deterministas via `uuid5`). Útil para re-importar si hace falta |
 | `invite_remaining.py` | Reenvío de invitaciones Supabase Auth (rate-limited a ~2/hora con SMTP gratuito) |
-| `supabase_migrations/*.sql` | Referencias de las migrations aplicadas (9 totales) |
+| `supabase_migrations/*.sql` | Referencias de las migrations aplicadas (11 totales) |
+| `supabase/functions/chat-assistant/` | Edge function Deno del chatbot IA (handler + prompt module + deno.json) |
+| `docs/superpowers/specs/`, `docs/superpowers/plans/` | Specs y planes de implementación generados por brainstorming/writing-plans |
 | `supabase_migrations/.env.supabase` | URL + publishable key (públicas, no service_role) |
 | `pupilo_docs/` | CVs de pupilos (datos reales, en .gitignore) |
 | `limpieza/` | Archivos obsoletos del pipeline pre-Supabase (Excel template, `inject_data.py`, `sync.py`, `crm.bat`, source HTML separado, docs viejas). En .gitignore |
@@ -43,6 +45,8 @@ CRM single-file (HTML + inline CSS/JS, vanilla, sin build) para gestionar client
 **Realtime (F15.4e):** Tras refresh exitoso, `subscribeRealtime()` se conecta a 4 canales. `_supaHandleRealtime` filtra echo del propio cliente comparando signature contra el snapshot. Toast 2.8s muestra el cambio. `doLogout` desuscribe.
 
 **Toggle "Ocultar demo" (F15.3e):** Wrappea los 4 helpers `scopedDeals/Clients/Activities/Companies` con un filtro `_notDemo`. Cero cambios en renderers porque todos pasan por scoped.
+
+**Chatbot IA L2 (F-Chatbot):** Widget burbuja flotante en `index.html` (`ChatWidget` IIFE antes de `/* boot */`). Persistencia historial en localStorage (`ceoadvisors_chat_history_v1`, cap 50 msgs). Parser markdown inline minimalista con sanitización XSS (whitelist + `safeHref`). Backend: edge function `supabase/functions/chat-assistant/index.ts` (Deno) que custodia `ANTHROPIC_API_KEY` como secret, verifica JWT, aplica rate limit via RPC `chat_rate_limit_check` (30/h/user), construye system prompt con `cache_control: ephemeral` sobre instrucciones y `scopedData`, y hace SSE relay desde Anthropic Messages API (`claude-sonnet-4-6`). Cliente envía `{messages, scopedData}` donde `scopedData` se construye con los helpers `scopedDeals/Clients/Companies/Activities` ya existentes. Read-only (L2): si el usuario pide acción de escritura, Claude la rechaza educadamente. Modelo y rate limit cambiables vía env vars (`CLAUDE_MODEL`, `CHAT_RATE_LIMIT_MAX`) sin tocar código.
 
 ## Workflow del usuario
 
@@ -128,6 +132,8 @@ Patrón usado 6 veces en este repo, fiable.
 - **Snapshot key versionada.** Hoy `ceoadvisors_supa_snapshot_v2`. Bumpear a v3 sólo si cambia el orden de propiedades de `_supaToRow` (JSON.stringify es orden-dependiente).
 - **Migraciones DDL Postgres:** orden importa. 006 antes que 009 porque 009 referencia columnas que 006 crea.
 - **Nombres RPC `upsert_<tabla>_if_newer`** hardcodeados en cliente. Renombrar = romper en silencio.
+- **RPC `chat_rate_limit_check(p_user, p_bucket, p_max)`** hardcodeado en la edge function `chat-assistant`. Renombrar = chatbot tira 500 a cada turno.
+- **Secret `ANTHROPIC_API_KEY`** vive solo en Supabase secrets (`supabase secrets set`) o en el dashboard Functions → Secrets. NUNCA en código ni en `.env` commiteable.
 - **`_supaSignature` y `_supaToRow` deben ser deterministas y consistentes.** El filtro de echo Realtime depende de que la signature del payload entrante sea idéntica a la guardada en snapshot tras un upsert exitoso.
 - **`is_admin()` y `my_consultant_id()`** referenciadas en todas las policies RLS. Cambio incompatible = todas las RLS rotas.
 - **`gsSearch` cubre 6 tipos.** Si añades un 7º (org, contact, etc.), ampliar `gsSearch` y `gsSelect`.
@@ -156,3 +162,8 @@ Patrón usado 6 veces en este repo, fiable.
 - Eliminar `_supaId` y usar `code` como id estable (refactor mayor; no urgente).
 - Supabase Storage para `pupilo_docs/`.
 - SMTP custom para invitaciones.
+- Chatbot L3 (acciones de escritura via tool use con confirmación humana).
+- Persistencia de conversaciones del chat en Supabase (cross-device, hoy solo localStorage).
+- Logging de tokens consumidos por usuario para visibilidad de coste del chatbot.
+- Chips de sugerencias rápidas en el chat ("Mis deals esta semana", etc.).
+- Stream read timeout en el cliente del chat (hoy depende del abort manual).
