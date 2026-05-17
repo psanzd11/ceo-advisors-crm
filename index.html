@@ -6,6 +6,7 @@
 <title>CEO Advisors · CRM</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1B4F8C">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="CEO CRM">
@@ -974,7 +975,7 @@ async function refreshFromSupabaseIfPossible(){
     try{ _supaUpdateSnapshot() }catch(e){ console.warn('snapshot:',e) }
     supaSetOfflineBanner(false);
     /* F15.4e: suscribir Realtime para updates live */
-    try{ subscribeRealtime() }catch(e){ console.warn('realtime:',e) }
+    try{ await subscribeRealtime() }catch(e){ console.warn('realtime:',e) }
     try{render()}catch(e){console.warn('render post-refresh:',e)}
     console.log('[Supabase] datos refrescados ('+(fresh.clients?.length||0)+' clientes, '+(fresh.deals?.length||0)+' deals)');
   }catch(e){
@@ -1571,10 +1572,10 @@ function applyMigrations(d){
   return d;
 }
 
+let _pendingSeedUpdate=null;
 let DB=loadDB();
 /* F7.1: tras cargar, generar reminders automáticos y limpiar los obsoletos */
 try{cleanupStaleReminders();generateAutoReminders()}catch(e){console.warn('reminders:',e)}
-let _pendingSeedUpdate=null;
 function loadDB(){
   try{
     const r=Storage.read();
@@ -7505,9 +7506,9 @@ function _supaHandleNotifRealtime(payload){
   try{ Storage.write(JSON.stringify(DB)); render(); }catch(e){}
 }
 
-function subscribeRealtime(){
+async function subscribeRealtime(){
   if(!window.sb) return;
-  unsubscribeRealtime();
+  await unsubscribeRealtime();
   ['deals','clients','activities'].forEach(t => {
     const ch = sb.channel('public:'+t).on('postgres_changes', {event:'*', schema:'public', table:t}, p => _supaHandleRealtime(t, p)).subscribe();
     _supaChannels.push(ch);
@@ -7516,9 +7517,9 @@ function subscribeRealtime(){
   _supaChannels.push(nch);
 }
 
-function unsubscribeRealtime(){
+async function unsubscribeRealtime(){
   if(!window.sb) return;
-  try{ sb.removeAllChannels(); }catch(e){}
+  try{ await sb.removeAllChannels(); }catch(e){}
   _supaChannels = [];
 }
 
