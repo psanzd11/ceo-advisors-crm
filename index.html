@@ -1800,7 +1800,10 @@ const fmtMoney=n=>n>=1e9?'$'+(n/1e9).toFixed(1)+'B':n>=1e6?'$'+(n/1e6).toFixed(1
 const fmtMoneyFull=n=>'$'+n.toLocaleString('en-US');
 const fmtDate=s=>{if(!s)return'—';const d=new Date(s);return d.toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})};
 const initials=n=>n.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
-const dealType=id=>DEAL_TYPES.find(t=>t.id===id);
+/* Fallback: tipos legacy ('mandate', 'retainer', etc.) no están en DEAL_TYPES.
+   Devolvemos un placeholder neutral en vez de undefined para no crashear renders. */
+const _UNKNOWN_DEAL_TYPE={id:'unknown',label:'—',color:'gray'};
+const dealType=id=>DEAL_TYPES.find(t=>t.id===id)||_UNKNOWN_DEAL_TYPE;
 const stageBy=id=>PIPELINE_STAGES.find(s=>s.id===id);
 const findClient=id=>DB.clients.find(c=>c.id===id);
 const findCompany=id=>DB.companies.find(c=>c.id===id);
