@@ -7816,7 +7816,14 @@ const ChatWidget = (function(){
     load();
     const fab = document.getElementById('chatFab');
     const popup = document.getElementById('chatPopup');
-    if(!fab || !popup) return;
+    if(!fab || !popup){
+      /* El HTML del widget vive despues de este script tag, asi que en boot
+         document.getElementById devuelve null. Re-intentar tras DOMContentLoaded. */
+      if(document.readyState === 'loading'){
+        document.addEventListener('DOMContentLoaded', init, {once:true});
+      }
+      return;
+    }
 
     fab.addEventListener('click', toggle);
     document.getElementById('chatClose').addEventListener('click', close);
