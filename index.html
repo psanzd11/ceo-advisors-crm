@@ -617,7 +617,7 @@
   }
 /* ────────── Chatbot IA Widget (F-Chatbot) ────────── */
 #chatFab{
-  position:fixed; right:20px; bottom:20px; z-index:9000;
+  position:fixed; right:20px; bottom:88px; z-index:9000;
   width:56px; height:56px; border-radius:50%;
   background:#0071e3; color:#fff; border:0; cursor:pointer;
   font-size:24px; display:flex; align-items:center; justify-content:center;
@@ -631,8 +631,8 @@
   background:#ff3b30; border:2px solid #fff;
 }
 #chatPopup{
-  position:fixed; right:20px; bottom:88px; z-index:9001;
-  width:400px; max-width:calc(100vw - 24px); height:520px; max-height:calc(100vh - 120px);
+  position:fixed; right:20px; bottom:156px; z-index:9001;
+  width:400px; max-width:calc(100vw - 24px); height:520px; max-height:calc(100vh - 188px);
   background:var(--bg,#fff); color:var(--text,#1d1d1f);
   border:1px solid rgba(0,0,0,.08); border-radius:14px;
   box-shadow:0 16px 48px rgba(0,0,0,.18);
@@ -684,7 +684,7 @@
 }
 #chatSend:disabled{background:#999; cursor:not-allowed}
 @media (max-width:480px){
-  #chatPopup{right:8px; bottom:80px; width:calc(100vw - 16px); height:calc(100vh - 100px)}
+  #chatPopup{right:8px; bottom:156px; width:calc(100vw - 16px); height:calc(100vh - 188px)}
 }
 </style>
 </head>
@@ -7543,7 +7543,11 @@ const ChatWidget = (function(){
       const raw = localStorage.getItem(KEY);
       if(!raw) return;
       const parsed = JSON.parse(raw);
-      if(Array.isArray(parsed)) state.messages = parsed.slice(-MAX_MESSAGES);
+      if(Array.isArray(parsed)){
+        state.messages = parsed
+          .filter(m => m && typeof m.role === 'string' && typeof m.content === 'string')
+          .slice(-MAX_MESSAGES);
+      }
     }catch(e){ console.warn('[chat] load failed', e); }
   }
   function save(){
@@ -7570,7 +7574,7 @@ const ChatWidget = (function(){
   function parseInline(text){
     let out = escapeHtml(text);
     out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, t, u) =>
-      `<a href="${escapeHtml(safeHref(u))}" target="_blank" rel="noopener">${t}</a>`);
+      `<a href="${safeHref(u)}" target="_blank" rel="noopener">${t}</a>`);
     out = out.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
     out = out.replace(/(^|[^\*])\*([^*\n]+)\*/g, '$1<i>$2</i>');
     out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
@@ -7703,7 +7707,8 @@ const ChatWidget = (function(){
 
     state.loading = true;
     state.streamingEl = null;
-    state.abortCtrl = new AbortController();
+    const ctrl = new AbortController();
+    state.abortCtrl = ctrl;
     const sendBtn = document.getElementById('chatSend');
     if(sendBtn) sendBtn.disabled = true;
 
@@ -7719,7 +7724,7 @@ const ChatWidget = (function(){
           'Authorization':'Bearer ' + session.access_token,
         },
         body: JSON.stringify(body),
-        signal: state.abortCtrl.signal,
+        signal: ctrl.signal,
       });
 
       if(res.status === 401){ appendError('Tu sesión caducó. Recarga la página.'); return; }
@@ -7759,6 +7764,7 @@ const ChatWidget = (function(){
       if(fullText){
         state.messages.push({role:'assistant', content:fullText});
         save();
+        if(!state.open) state.unread++;
       }
     }catch(err){
       if(err.name === 'AbortError'){ /* silent */ }
@@ -7772,7 +7778,6 @@ const ChatWidget = (function(){
         state.streamingEl = null;
       }
       if(sendBtn) sendBtn.disabled = false;
-      if(!state.open) state.unread++;
       render();
     }
   }
