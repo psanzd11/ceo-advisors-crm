@@ -7695,6 +7695,15 @@ const ChatWidget = (function(){
     list.appendChild(div);
     list.scrollTop = list.scrollHeight;
   }
+  function appendInfo(msg){
+    const list = document.getElementById('chatMessages');
+    if(!list) return;
+    const div = document.createElement('div');
+    div.className = 'chat-msg-info';
+    div.textContent = msg;
+    list.appendChild(div);
+    list.scrollTop = list.scrollHeight;
+  }
 
   // ─── Send con SSE ───
   async function send(text){
@@ -7716,7 +7725,9 @@ const ChatWidget = (function(){
       const { data:{session} } = await sb.auth.getSession();
       if(!session){ throw new Error('NO_SESSION'); }
 
-      const body = { messages: state.messages, scopedData: buildScopedData() };
+      const scoped = buildScopedData();
+      if(scoped._truncated){ appendInfo('Mostrando un subset reciente de tus datos (los más actuales).'); }
+      const body = { messages: state.messages, scopedData: scoped };
       const res = await fetch(ENDPOINT, {
         method:'POST',
         headers:{
@@ -7792,6 +7803,7 @@ const ChatWidget = (function(){
   }
   function close(){
     state.open = false;
+    state.abortCtrl?.abort();
     document.getElementById('chatPopup').hidden = true;
   }
   function toggle(){ state.open ? close() : open(); }
