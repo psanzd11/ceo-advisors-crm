@@ -981,6 +981,7 @@ async function refreshFromSupabaseIfPossible(){
       }
     }catch(e){ console.warn('load notifs:',e) }
     try{ _supaUpdateSnapshot() }catch(e){ console.warn('snapshot:',e) }
+    try{ _supaDropFreshFromQueue(DB) }catch(e){ console.warn('dropFresh:',e) }
     supaSetOfflineBanner(false);
     /* F15.4e: suscribir Realtime para updates live */
     try{ await subscribeRealtime() }catch(e){ console.warn('realtime:',e) }
@@ -1066,6 +1067,36 @@ function _supaSanitizeQueue(){
     console.warn('[Supabase] '+moved+' item(s) malformados movidos a cuarentena');
   }
   return { quarantined: moved };
+}
+
+/* Tras un refresh exitoso, purga de la cola de upserts cualquier fila cuyo servidor
+   tenga updated_at >= al local. Evita el boot-loop de conflictos cuando hay entries
+   stale persistidas en SUPA_QUEUE_KEY de sesiones previas. */
+function _supaDropFreshFromQueue(freshDB) {
+  try {
+    const q = JSON.parse(localStorage.getItem(SUPA_QUEUE_KEY) || '{"upserts":{},"deletes":{}}');
+    const tables = { consultants: freshDB.consultants, clients: freshDB.clients,
+                     companies: freshDB.companies, deals: freshDB.deals,
+                     activities: freshDB.activities, pupilos: freshDB.pupilos };
+    let changed = false;
+    for (const [table, rows] of Object.entries(tables)) {
+      if (!q.upserts?.[table] || !rows?.length) continue;
+      const serverIds = new Set(rows.map(r => r._supaId).filter(Boolean));
+      for (const key of Object.keys(q.upserts[table])) {
+        const row = q.upserts[table][key];
+        if (row?.id && serverIds.has(row.id)) {
+          const serverRow = rows.find(r => r._supaId === row.id);
+          if (serverRow && serverRow._supaUpdatedAt >= (row.updated_at || '')) {
+            delete q.upserts[table][key];
+            changed = true;
+          }
+        }
+      }
+      if (q.upserts[table] && !Object.keys(q.upserts[table]).length)
+        delete q.upserts[table];
+    }
+    if (changed) localStorage.setItem(SUPA_QUEUE_KEY, JSON.stringify(q));
+  } catch(e) { console.warn('dropFreshFromQueue:', e); }
 }
 
 function _supaResolveUuid(type, code){
@@ -1307,8 +1338,26 @@ function showConflictModalIfAny(){
   document.body.appendChild(ov);
 }
 async function resolveConflictReload(){
+  let bag = {};
+  try{ bag = JSON.parse(localStorage.getItem(SUPA_CONFLICTS_KEY)||'{}') }catch(e){}
   localStorage.removeItem(SUPA_CONFLICTS_KEY);
   document.getElementById('supaConflictModal')?.remove();
+  /* Quita las filas conflictivas de la cola de upserts para evitar que el siguiente
+     boot las re-empuje y vuelva a disparar el conflicto (loop). */
+  try{
+    const q = JSON.parse(localStorage.getItem(SUPA_QUEUE_KEY)||'{"upserts":{},"deletes":{}}');
+    let changed = false;
+    for(const [table, arr] of Object.entries(bag)){
+      if(!q.upserts?.[table]) continue;
+      for(const c of (arr||[])){
+        if(c.id && q.upserts[table][c.id]){
+          delete q.upserts[table][c.id];
+          changed = true;
+        }
+      }
+    }
+    if(changed) localStorage.setItem(SUPA_QUEUE_KEY, JSON.stringify(q));
+  }catch(e){ console.warn('resolveConflictReload cleanup:', e) }
   await refreshFromSupabaseIfPossible();
 }
 async function resolveConflictForce(){
