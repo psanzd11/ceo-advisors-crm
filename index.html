@@ -1341,17 +1341,29 @@ async function _supaUpsertTable(table, rows){
 
 // F15.4f: cola y modal de conflictos
 const SUPA_CONFLICTS_KEY = 'ceoadvisors_supa_conflicts_v1';
+/* Rechazos persistentes (p.ej. unique violation skipeada por migración 010)
+   no son conflictos de edición concurrente — son errores permanentes de schema.
+   En lugar de poblar el bag (que dispara modal "otro usuario te editó"),
+   movemos directamente a quarantine y quitamos de la cola para que no se
+   reintenten. El modal queda reservado para conflictos genuinos. */
 function _supaQueueConflicts(table, rejectedRows, localRows){
   try{
-    const cur = JSON.parse(localStorage.getItem(SUPA_CONFLICTS_KEY)||'{}');
-    if(!cur[table]) cur[table] = [];
+    const q = JSON.parse(localStorage.getItem(SUPA_QUEUE_KEY)||'{"upserts":{},"deletes":{}}');
+    let quar = {};
+    try{ quar = JSON.parse(localStorage.getItem(SUPA_QUARANTINE_KEY)||'{}'); }catch(_){}
     rejectedRows.forEach(r => {
+      const code = r.code;
       const localRow = localRows.find(lr => lr._supaId===r.id);
-      cur[table].push({ id:r.id, code:r.code, ts:Date.now(), local:localRow });
+      (quar[table] = quar[table] || []).push({
+        op:'upsert', key:code, row:localRow, ts:Date.now(), reason:'persistent_rejection'
+      });
+      if(q.upserts?.[table] && q.upserts[table][code]) delete q.upserts[table][code];
     });
-    localStorage.setItem(SUPA_CONFLICTS_KEY, JSON.stringify(cur));
-  }catch(e){ console.warn('queueConflicts:',e) }
-  setTimeout(()=>showConflictModalIfAny(),100);
+    if(q.upserts?.[table] && !Object.keys(q.upserts[table]).length) delete q.upserts[table];
+    localStorage.setItem(SUPA_QUEUE_KEY, JSON.stringify(q));
+    localStorage.setItem(SUPA_QUARANTINE_KEY, JSON.stringify(quar));
+    console.warn('[supa] '+rejectedRows.length+' fila(s) movidas a quarantine en '+table+' (rechazo persistente)');
+  }catch(e){ console.warn('queueConflicts->quarantine:',e) }
 }
 function showConflictModalIfAny(){
   let bag = {};
@@ -8002,6 +8014,12 @@ try{ showSeedUpdateBannerIfNeeded() }catch(e){ console.warn('seed banner:',e) }
     /* F15.4-hotfix: REFRESH primero para poblar _supaId reales, LUEGO flush.
        Esto evita que el cliente genere UUIDs ficticios para filas que ya existen
        en backend pero cuyo _supaId local no estaba poblado (causa del bug 409). */
+    /* Bag de conflictos es transiente: limpiamos al inicio del boot para borrar
+       cualquier conflicto fósil de sesiones previas. Si el flush actual genera
+       rechazos genuinos, _supaQueueConflicts ahora los manda a quarantine,
+       no al bag, así que el modal solo aparecería para conflictos reales. */
+    try{ localStorage.removeItem(SUPA_CONFLICTS_KEY); }catch(_){}
+    try{ document.getElementById('supaConflictModal')?.remove(); }catch(_){}
     await refreshFromSupabaseIfPossible();
     try{ _supaSanitizeQueue(); }catch(e){ console.warn('boot sanitize:',e) }
     try{ await flushSupabase() }catch(e){ console.warn('boot flush:',e) }
