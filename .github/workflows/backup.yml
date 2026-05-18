@@ -1,0 +1,59 @@
+name: Daily Supabase Backup
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: supabase-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout source repo (script)
+        uses: actions/checkout@v4
+        with:
+          path: src
+
+      - name: Checkout private backup repo
+        uses: actions/checkout@v4
+        with:
+          repository: psanzd11/ceo-advisors-crm-backups
+          token: ${{ secrets.BACKUP_REPO_TOKEN }}
+          path: backup-repo
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run backup script
+        env:
+          SUPABASE_URL: https://rtusnruywsmbbzejxooi.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BACKUP_OUT_DIR: ${{ github.workspace }}/backup-repo/backups
+        run: python src/scripts/backup_supabase.py
+
+      - name: Prune backups older than 60 days
+        working-directory: backup-repo
+        run: |
+          if [ -d backups ]; then
+            find backups -mindepth 1 -maxdepth 1 -type d | sort -r | tail -n +61 | xargs -r rm -rf
+          fi
+
+      - name: Commit and push
+        working-directory: backup-repo
+        run: |
+          git config user.name 'ceo-crm-backup-bot'
+          git config user.email 'backup-bot@ceoadvisors.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No backup changes to commit.'
+            exit 0
+          fi
+          git commit -m "backup $(date -u +%Y-%m-%d)"
+          git push
