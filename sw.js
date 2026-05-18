@@ -2,10 +2,11 @@
    Network-first para navegaciones (HTML) — garantiza que cada deploy se vea
    en el siguiente refresh, sin esperar a que la cache se invalide sola.
    Cache-first para el resto de assets (fallback offline). */
-const CACHE = 'ceoadvisors-crm-v3';
+const CACHE = 'ceoadvisors-crm-v4';
 const ASSETS = [
   './',
   './index.html',
+  './manifest.json',
 ];
 
 self.addEventListener('install', e => {
