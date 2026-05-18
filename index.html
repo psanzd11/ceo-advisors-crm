@@ -1069,33 +1069,55 @@ function _supaSanitizeQueue(){
   return { quarantined: moved };
 }
 
-/* Tras un refresh exitoso, purga de la cola de upserts cualquier fila cuyo servidor
-   tenga updated_at >= al local. Evita el boot-loop de conflictos cuando hay entries
-   stale persistidas en SUPA_QUEUE_KEY de sesiones previas. */
+/* Tras un refresh exitoso, drop entries huérfanas de la cola: el DB se acaba de
+   sobreescribir con el server (DB=fresh), así que cualquier upsert pendiente cuyo
+   código legacy existe en el server ya no tiene una versión local "viva" que
+   justifique el push — el edit local quedó pisado por el refresh.
+
+   Las queue keys son códigos legacy (u9, c12, d3...), igual que row.id en el DB
+   local. Antes esta función comparaba contra UUIDs (_supaId) por error, lo que
+   nunca disparaba el drop y provocaba boot-loop de conflictos. */
 function _supaDropFreshFromQueue(freshDB) {
   try {
     const q = JSON.parse(localStorage.getItem(SUPA_QUEUE_KEY) || '{"upserts":{},"deletes":{}}');
     const tables = { consultants: freshDB.consultants, clients: freshDB.clients,
                      companies: freshDB.companies, deals: freshDB.deals,
                      activities: freshDB.activities, pupilos: freshDB.pupilos };
-    let changed = false;
+    const droppedByTable = {};
+    let queueChanged = false;
     for (const [table, rows] of Object.entries(tables)) {
       if (!q.upserts?.[table] || !rows?.length) continue;
-      const serverIds = new Set(rows.map(r => r._supaId).filter(Boolean));
+      const serverCodes = new Set(rows.map(r => r && r.id).filter(Boolean));
+      const dropped = new Set();
       for (const key of Object.keys(q.upserts[table])) {
-        const row = q.upserts[table][key];
-        if (row?.id && serverIds.has(row.id)) {
-          const serverRow = rows.find(r => r._supaId === row.id);
-          if (serverRow && serverRow._supaUpdatedAt >= (row.updated_at || '')) {
-            delete q.upserts[table][key];
-            changed = true;
-          }
+        if (serverCodes.has(key)) {
+          delete q.upserts[table][key];
+          dropped.add(key);
+          queueChanged = true;
         }
       }
+      if (dropped.size) droppedByTable[table] = dropped;
       if (q.upserts[table] && !Object.keys(q.upserts[table]).length)
         delete q.upserts[table];
     }
-    if (changed) localStorage.setItem(SUPA_QUEUE_KEY, JSON.stringify(q));
+    if (queueChanged) localStorage.setItem(SUPA_QUEUE_KEY, JSON.stringify(q));
+
+    /* Si dropeamos entries de la cola, purgar también el bag de conflictos
+       asociados — el modal apuntaría a edits que ya no vamos a empujar. */
+    if (Object.keys(droppedByTable).length) {
+      try {
+        const bag = JSON.parse(localStorage.getItem(SUPA_CONFLICTS_KEY) || '{}');
+        let bagChanged = false;
+        for (const [table, dropped] of Object.entries(droppedByTable)) {
+          if (!Array.isArray(bag[table])) continue;
+          const before = bag[table].length;
+          bag[table] = bag[table].filter(c => !dropped.has(c.code));
+          if (bag[table].length !== before) bagChanged = true;
+          if (!bag[table].length) delete bag[table];
+        }
+        if (bagChanged) localStorage.setItem(SUPA_CONFLICTS_KEY, JSON.stringify(bag));
+      } catch(e) { console.warn('dropFresh conflicts:', e); }
+    }
   } catch(e) { console.warn('dropFreshFromQueue:', e); }
 }
 
@@ -1343,18 +1365,21 @@ async function resolveConflictReload(){
   localStorage.removeItem(SUPA_CONFLICTS_KEY);
   document.getElementById('supaConflictModal')?.remove();
   /* Quita las filas conflictivas de la cola de upserts para evitar que el siguiente
-     boot las re-empuje y vuelva a disparar el conflicto (loop). */
+     boot las re-empuje y vuelva a disparar el conflicto (loop). La cola está
+     indexada por código legacy (u9, c12...), no por UUID — usar c.code, no c.id. */
   try{
     const q = JSON.parse(localStorage.getItem(SUPA_QUEUE_KEY)||'{"upserts":{},"deletes":{}}');
     let changed = false;
     for(const [table, arr] of Object.entries(bag)){
       if(!q.upserts?.[table]) continue;
       for(const c of (arr||[])){
-        if(c.id && q.upserts[table][c.id]){
-          delete q.upserts[table][c.id];
+        if(c.code && q.upserts[table][c.code]){
+          delete q.upserts[table][c.code];
           changed = true;
         }
       }
+      if(q.upserts[table] && !Object.keys(q.upserts[table]).length)
+        delete q.upserts[table];
     }
     if(changed) localStorage.setItem(SUPA_QUEUE_KEY, JSON.stringify(q));
   }catch(e){ console.warn('resolveConflictReload cleanup:', e) }
