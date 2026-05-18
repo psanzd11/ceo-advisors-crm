@@ -1069,14 +1069,16 @@ function _supaSanitizeQueue(){
   return { quarantined: moved };
 }
 
-/* Tras un refresh exitoso, drop entries huérfanas de la cola: el DB se acaba de
-   sobreescribir con el server (DB=fresh), así que cualquier upsert pendiente cuyo
-   código legacy existe en el server ya no tiene una versión local "viva" que
-   justifique el push — el edit local quedó pisado por el refresh.
+/* Tras un refresh exitoso, drena la cola de entries que ya no tienen razón
+   de pushearse. Tras DB=fresh, los únicos pushes válidos son los que el
+   usuario inició cuyo contenido difiere del server:
 
-   Las queue keys son códigos legacy (u9, c12, d3...), igual que row.id en el DB
-   local. Antes esta función comparaba contra UUIDs (_supaId) por error, lo que
-   nunca disparaba el drop y provocaba boot-loop de conflictos. */
+     1) Si la code de la entry NO está en server -> orfana (nunca llegó a
+        sincronizarse, p.ej. unique-violation skipeada por migración 010).
+        Sin esto, u9/u10 reintentan en cada boot y disparan modal.
+     2) Si la code SÍ está en server y la signature del queued matchea la del
+        server -> ruido (no hay edit real, solo regeneración de timestamp).
+     3) Si las signatures difieren -> edit local genuino, preservar. */
 function _supaDropFreshFromQueue(freshDB) {
   try {
     const q = JSON.parse(localStorage.getItem(SUPA_QUEUE_KEY) || '{"upserts":{},"deletes":{}}');
@@ -1086,11 +1088,21 @@ function _supaDropFreshFromQueue(freshDB) {
     const droppedByTable = {};
     let queueChanged = false;
     for (const [table, rows] of Object.entries(tables)) {
-      if (!q.upserts?.[table] || !rows?.length) continue;
-      const serverCodes = new Set(rows.map(r => r && r.id).filter(Boolean));
+      if (!q.upserts?.[table]) continue;
+      const serverByCode = new Map((rows||[]).filter(r => r && r.id).map(r => [r.id, r]));
       const dropped = new Set();
       for (const key of Object.keys(q.upserts[table])) {
-        if (serverCodes.has(key)) {
+        const serverRow = serverByCode.get(key);
+        const queuedRow = q.upserts[table][key];
+        let drop = false;
+        if (!serverRow) {
+          drop = true;
+        } else {
+          try {
+            if (_supaSignature(table, queuedRow) === _supaSignature(table, serverRow)) drop = true;
+          } catch(e) { /* on error, conservative: keep entry */ }
+        }
+        if (drop) {
           delete q.upserts[table][key];
           dropped.add(key);
           queueChanged = true;
@@ -1102,8 +1114,6 @@ function _supaDropFreshFromQueue(freshDB) {
     }
     if (queueChanged) localStorage.setItem(SUPA_QUEUE_KEY, JSON.stringify(q));
 
-    /* Si dropeamos entries de la cola, purgar también el bag de conflictos
-       asociados — el modal apuntaría a edits que ya no vamos a empujar. */
     if (Object.keys(droppedByTable).length) {
       try {
         const bag = JSON.parse(localStorage.getItem(SUPA_CONFLICTS_KEY) || '{}');
