@@ -1224,7 +1224,12 @@ function _supaToRow(table, x){
 function _supaSignature(table, x){
   const r = _supaToRow(table, x);
   if(!r) return '';
-  return JSON.stringify(r);
+  /* Excluir updated_at: _supaToRow lo regenera con nowIso en cada llamada,
+     lo que hacía que toda fila apareciera "dirty" en cada flush y la cola
+     se rellenara con todo el dataset (boot-loop de conflictos para filas
+     que fallan por unique constraints, p.ej. consultants con email duplicado). */
+  const { updated_at, ...rest } = r;
+  return JSON.stringify(rest);
 }
 
 function _supaLoadSnapshot(){
@@ -7547,7 +7552,7 @@ function _supaHandleRealtime(table, payload){
   if(code && ev !== 'DELETE'){
     const mapped = _supaApplyRealtimeRow(table, row);
     if(mapped){
-      const sig = JSON.stringify(_supaToRow(table, mapped));
+      const sig = _supaSignature(table, mapped);
       if(sig === snap[table][code].sig) return; // echo del propio cliente
     }
   }
