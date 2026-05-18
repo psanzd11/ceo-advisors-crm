@@ -8,6 +8,8 @@
 !Dockerfile
 !Caddyfile
 !index.html
+!manifest.json
+!sw.js
 
 # Backups, fuentes y scripts: no se suben (el deploy es sólo del HTML servido)
 *.bak*
