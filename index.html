@@ -1959,9 +1959,11 @@ const _rawScopedDeals=()=>isCEO()?DB.deals:DB.deals.filter(d=>(d.splits||[]).som
 const scopedDeals=()=>isDemoHidden()?_rawScopedDeals().filter(_notDemo):_rawScopedDeals();
 const scopedClientIdSet=()=>{const s=new Set();scopedDeals().forEach(d=>{if(d.clientId)s.add(d.clientId)});return s};
 const scopedCompanyIdSet=()=>{const s=new Set();scopedDeals().forEach(d=>{if(d.companyId)s.add(d.companyId)});return s};
-const _rawScopedClients=()=>{if(isCEO())return DB.clients;const s=scopedClientIdSet();return DB.clients.filter(c=>s.has(c.id))};
+/* F-LibretaCompartida: clients = libreta compartida del equipo (todos ven todo). Ownership/comisión sigue en deals.splits[]. */
+const _rawScopedClients=()=>DB.clients;
 const scopedClients=()=>isDemoHidden()?_rawScopedClients().filter(_notDemo):_rawScopedClients();
-const _rawScopedCompanies=()=>{if(isCEO())return DB.companies;const s=scopedCompanyIdSet();return DB.companies.filter(co=>s.has(co.id))};
+/* F-LibretaCompartida: companies = libreta compartida del equipo (todos ven todo). */
+const _rawScopedCompanies=()=>DB.companies;
 const scopedCompanies=()=>isDemoHidden()?_rawScopedCompanies().filter(_notDemo):_rawScopedCompanies();
 const _rawScopedActivities=()=>{if(isCEO())return DB.activities;const cs=scopedClientIdSet(),os=scopedCompanyIdSet(),ds=new Set(scopedDeals().map(d=>d.id));return DB.activities.filter(a=>(a.clientId&&cs.has(a.clientId))||(a.companyId&&os.has(a.companyId))||(a.dealId&&ds.has(a.dealId)))};
 const scopedActivities=()=>isDemoHidden()?_rawScopedActivities().filter(_notDemo):_rawScopedActivities();

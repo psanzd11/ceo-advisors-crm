@@ -81,9 +81,16 @@ Crear `supabase_migrations/013_clients_companies_shared.sql` con este contenido 
 -- Convierte clients y companies en libreta compartida: cualquier autenticado
 -- puede INSERT/UPDATE. DELETE sigue restringido a admin/CEO.
 -- Mantiene SELECT abierto a authenticated (sin cambio respecto a 001).
+--
+-- IDEMPOTENTE: las policies pueden existir ya (migración previa 007
+-- rls_collaborative pudo dejarlas en este estado). Los drops cubren todas
+-- las variantes conocidas para que el apply sea no-op si ya están aplicadas.
 
 -- ─── clients ────────────────────────────────────────────────────
-drop policy if exists "clients write admin" on public.clients;
+drop policy if exists "clients write admin"  on public.clients;
+drop policy if exists "clients insert auth"  on public.clients;
+drop policy if exists "clients update auth"  on public.clients;
+drop policy if exists "clients delete admin" on public.clients;
 
 create policy "clients insert auth" on public.clients
   for insert to authenticated
@@ -99,7 +106,10 @@ create policy "clients delete admin" on public.clients
   using (public.is_admin());
 
 -- ─── companies ──────────────────────────────────────────────────
-drop policy if exists "companies write admin" on public.companies;
+drop policy if exists "companies write admin"  on public.companies;
+drop policy if exists "companies insert auth"  on public.companies;
+drop policy if exists "companies update auth"  on public.companies;
+drop policy if exists "companies delete admin" on public.companies;
 
 create policy "companies insert auth" on public.companies
   for insert to authenticated
