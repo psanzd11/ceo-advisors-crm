@@ -78,8 +78,8 @@ Como cambios adyacentes en la misma zona del header, se retiran los botones **Im
 | Title | texto | **sí** | Si vacío → fila omitida con warning. |
 | Client ID | texto | no | ID temporal de la hoja Clients. Si no encontrado → deal creado con `clientId=''` + warning. |
 | Company ID | texto | no | Idem para Companies. |
-| Type | texto | no | Whitelist: `sale`, `finance`, `expand`, `advise`, `mandate`. Inválido → default `advise`. |
-| Stage | texto | no | Whitelist: `discovery`, `proposal`, `negotiation`, `won`, `lost`. Inválido → default `discovery`. |
+| Type | texto | no | Whitelist (extraída de `DEAL_TYPES` en `index.html:804`): `sale`, `finance`, `expand`, `advise`, `wealth`. Inválido → default `advise`. |
+| Stage | texto | no | Whitelist (extraída de `PIPELINE_STAGES` en `index.html:811`): `prospect`, `qualified`, `proposal`, `negotiation`, `won`, `lost`. Inválido → default `prospect`. |
 | Amount USD | número | no | Default 0. |
 | Expected Close | fecha | no | Formato `YYYY-MM-DD`. Inválido o vacío → `''`. |
 | Notes | texto | no | |
@@ -96,12 +96,14 @@ Como cambios adyacentes en la misma zona del header, se retiran los botones **Im
 ## 4. Cambios en la barra del header
 
 ### Eliminar
+- `<button id="btnReload">` (línea 766-768) — la función `reloadFromTemplate()` queda viva porque la usa también el panel Settings (línea ~7435).
+- `<button id="btnCsvImport">` (línea 769) — eliminar también la función `openCsvImport()` completa (línea ~6504). El nuevo Excel importer la sustituye.
 - `<button id="btnImport">` (línea 770)
 - `<input id="importFileInput" type="file" accept=".json">` (línea 773)
 - `<button id="btnExport">` (línea 775)
-- Listener click de `#btnImport` y handler `change` de `#importFileInput` (líneas ~6218-6280)
-- Listener click de `#btnExport` (línea ~6102)
-- Variable global `_backupToastShown` y referencias en el toast de backup si solo apuntaba al export JSON eliminado (verificar dependencias al implementar; si el toast lo usaba el digest también, mantener).
+- Listener click de `#btnImport` y handler `change` de `#importFileInput` (líneas ~6220-6260).
+- Listener click de `#btnExport` (líneas ~6104-6122).
+- Helpers de backup/export obsoletos: `_changesSinceExport` (línea 1749), `_lastExportTs` (línea 1750), `_backupToastShown` (línea 6125), funciones `maybeBackupReminder` (6126), `showBackupToast` (6134), `showPostExportModal` (6148). Quitar también la llamada `_changesSinceExport++` y `maybeBackupReminder()` dentro de `saveDB()` (líneas 1754-1756). Keys de localStorage `crm_changes_since_export` y `crm_last_export_ts` se borran defensivamente.
 
 ### Añadir
 - `<button id="btnImportXLSX">` con icono upload + label "Importar Excel". Click → `openImportExcel()`.
@@ -196,7 +198,7 @@ Las 6 funciones viven inline en el `<script>` de `index.html`, insertadas **ante
 | `Source` | No en whitelist | Default `'Other'` |
 | `Tier` | Vacío o no en {A,B,C,D} | `autoTier(netWorth)` |
 | `Type` (deal) | No en whitelist | Default `'advise'` |
-| `Stage` (deal) | No en whitelist | Default `'discovery'` |
+| `Stage` (deal) | No en whitelist | Default `'prospect'` |
 | `Country` | Vacío | Default `'—'` |
 | `Net Worth USD`, `Amount USD`, `Employees` | Vacío o no numérico | Default 0 |
 | `Expected Close` | Vacío o parse fail | Default `''` |
