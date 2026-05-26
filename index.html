@@ -763,18 +763,10 @@
         </div>
         <div class="uswitch" id="uswitchBtn"></div>
         <div class="udrop" id="udrop"></div>
-        <button class="btn outline" id="btnReload" title="Recargar datos desde la plantilla embebida (uso tras inject.bat)" onclick="reloadFromTemplate()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15.5-6.36L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.36L3 16"/><path d="M3 21v-5h5"/></svg>Recargar
-        </button>
-        <button class="btn outline" id="btnCsvImport" title="Importar masivamente desde CSV (clientes/empresas/pupilos)" onclick="openCsvImport()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8M12 8v8"/></svg>CSV</button>
-        <button class="btn outline" id="btnImport" title="Importar datos desde JSON">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9m0 0l-4 4m4-4l4 4M5 3h14"/></svg>Importar
-        </button>
-        <input type="file" id="importFileInput" accept=".json" style="display:none">
+        <button class="btn outline" id="btnDownloadTemplate" title="Descargar plantilla Excel para importar (3 hojas: Clients/Companies/Deals)" onclick="downloadImportTemplate()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/><rect x="3" y="3" width="18" height="3" rx="0.5" fill="currentColor" fill-opacity="0.1"/></svg>Plantilla</button>
+        <button class="btn outline" id="btnImportXLSX" title="Importar cartera desde Excel (Clients/Companies/Deals)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9m0 0l-4 4m4-4l4 4M5 3h14"/></svg>Importar Excel</button>
+        <input type="file" id="importXLSXInput" accept=".xlsx,.xls" style="display:none">
         <button class="btn outline" id="btnDigest" title="Genera tu digest semanal (al portapapeles)" onclick="generateWeeklyDigest()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 4v16"/></svg>Digest</button>
-        <button class="btn outline" id="btnExport" title="Exportar a JSON (backup completo)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>Exportar
-        </button>
         <button class="btn outline" id="btnExportXLSX" title="Exportar a Excel (Consultants/Clients/Companies/Deals/Activities)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9l6 6M15 9l-6 6"/></svg>Excel
         </button>
@@ -1745,15 +1737,9 @@ function migrateAuth(d){
 /* migrateExtra → ahora delega en applyMigrations() (cadena versionada). Mantengo el nombre como alias por compatibilidad con el código antiguo. */
 function migrateExtra(d){return applyMigrations(d)}
 
-/* saveDB tracking: incrementa contador de cambios para el reminder de backup */
-let _changesSinceExport = parseInt(localStorage.getItem('crm_changes_since_export')||'0',10) || 0;
-let _lastExportTs = parseInt(localStorage.getItem('crm_last_export_ts')||'0',10) || 0;
 function saveDB(){
   normalizeRelations();invalidateProbCache();
   Storage.write(JSON.stringify(DB));
-  _changesSinceExport++;
-  try{localStorage.setItem('crm_changes_since_export',String(_changesSinceExport))}catch(e){}
-  maybeBackupReminder();
   try{ scheduleSupabaseFlush() }catch(e){ console.warn('supa schedule:',e) }
 }
 /* Integridad referencial: activity → deal → company → client. Si una actividad tiene dealId,
@@ -3149,7 +3135,7 @@ function renderClientList(){
         }).join('')}
       </tbody>
     </table>
-    ${enriched.length===0?(baseClients.length===0?'<div class="empty" style="padding:60px;text-align:center"><div style="font-size:42px;margin-bottom:8px">👤</div><div style="font-weight:600;color:var(--ink);margin-bottom:4px">Sin clientes todavía</div><div class="muted" style="margin-bottom:14px">Empieza a construir tu cartera. También puedes importar masivo desde CSV.</div><div class="flex gap-s" style="justify-content:center"><button class="btn primary" onclick="openNew(\'client\')">+ Crear primer cliente</button><button class="btn outline" onclick="openCsvImport()">Importar CSV</button></div></div>':'<div class="empty"><div class="ilu">🔍</div>Sin resultados con esos filtros</div>'):''}
+    ${enriched.length===0?(baseClients.length===0?'<div class="empty" style="padding:60px;text-align:center"><div style="font-size:42px;margin-bottom:8px">👤</div><div style="font-weight:600;color:var(--ink);margin-bottom:4px">Sin clientes todavía</div><div class="muted" style="margin-bottom:14px">Empieza a construir tu cartera.</div><div class="flex gap-s" style="justify-content:center"><button class="btn primary" onclick="openNew(\'client\')">+ Crear primer cliente</button></div></div>':'<div class="empty"><div class="ilu">🔍</div>Sin resultados con esos filtros</div>'):''}
   `;
 }
 function sortClients(by){if(state.cSort.by===by)state.cSort.dir=state.cSort.dir==='desc'?'asc':'desc';else{state.cSort.by=by;state.cSort.dir=(by==='name'||by==='country'||by==='source')?'asc':'desc'}renderClientList()}
@@ -6099,77 +6085,7 @@ function renderAnalytics(root){
     </div>`;
 }
 
-/* ──────────── export ──────────── */
 const SCHEMA_VERSION='2026.05.1';
-$('#btnExport').addEventListener('click',()=>{
-  /* Filtrar campos sensibles antes de exportar JSON */
-  const safe=JSON.parse(JSON.stringify(DB));
-  (safe.consultants||[]).forEach(c=>{delete c.passwordHash;delete c.passwordSalt;delete c.passwordIters;delete c.password});
-  safe.schemaVersion=SCHEMA_VERSION;
-  /* 2.5 Team-handoff metadata: quién exportó, cuándo, cuántos cambios desde el último export */
-  const me = findConsultant(DB.currentUserId);
-  safe._exportedBy = me ? {id:me.id, name:me.name, email:me.email} : null;
-  safe._exportedAt = new Date().toISOString();
-  safe._changesSinceLastExport = _changesSinceExport;
-  safe._auditCount = (DB.audit||[]).length;
-  const fname = `ceoadvisors_crm_export_${new Date().toISOString().slice(0,10)}_${(me?me.id:'unknown')}.json`;
-  const blob=new Blob([JSON.stringify(safe,null,2)],{type:'application/json'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;a.click();
-  /* Reset del contador y timestamp tras export exitoso */
-  _changesSinceExport=0; _lastExportTs=Date.now();
-  try{localStorage.setItem('crm_changes_since_export','0');localStorage.setItem('crm_last_export_ts',String(_lastExportTs))}catch(e){}
-  setTimeout(()=>showPostExportModal(fname),200);
-});
-
-/* 2.4 Auto-backup reminder ─ avisa si hay 30+ cambios o pasaron 4h sin export */
-let _backupToastShown=false;
-function maybeBackupReminder(){
-  if(_backupToastShown)return;
-  const hours = _lastExportTs ? (Date.now()-_lastExportTs)/3600000 : 999;
-  if(_changesSinceExport>=30 || (hours>=4 && _changesSinceExport>=5)){
-    _backupToastShown=true;
-    showBackupToast(hours);
-  }
-}
-function showBackupToast(hours){
-  const t=document.createElement('div');
-  t.id='backupToast';
-  t.style.cssText='position:fixed;bottom:24px;right:24px;z-index:9998;background:var(--surface);border:1px solid var(--brand);border-left:4px solid var(--brand);border-radius:10px;padding:14px 18px;box-shadow:0 8px 32px rgba(0,0,0,.18);max-width:340px;font-size:13px';
-  const lastTxt = _lastExportTs ? `Hace ${Math.round(hours)}h sin exportar` : 'Aún no has exportado';
-  t.innerHTML=`
-    <div style="font-weight:600;color:var(--ink);margin-bottom:4px">📥 Backup recomendado</div>
-    <div class="muted" style="margin-bottom:10px;line-height:1.5">${_changesSinceExport} cambios sin guardar a JSON. ${lastTxt}.</div>
-    <div class="flex gap-s">
-      <button class="btn sm primary" onclick="document.getElementById('backupToast').remove();_backupToastShown=false;document.getElementById('btnExport').click()">Exportar ahora</button>
-      <button class="btn sm ghost" onclick="document.getElementById('backupToast').remove()">Más tarde</button>
-    </div>`;
-  document.body.appendChild(t);
-}
-function showPostExportModal(fname){
-  const f = fname || 'ceoadvisors_crm_export.json';
-  const ov=document.createElement('div');
-  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
-  ov.innerHTML=`
-    <div style="background:var(--surface);border-radius:12px;max-width:480px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.3);border:1px solid var(--line)">
-      <div style="font-size:42px;margin-bottom:8px">✓</div>
-      <h2 style="margin:0 0 6px;color:var(--ink);font-size:20px">JSON exportado</h2>
-      <div class="muted" style="margin-bottom:16px">Archivo: <code style="background:var(--surface-2);padding:2px 6px;border-radius:4px;font-size:12px">${f}</code> (en tu carpeta Descargas)</div>
-      <div style="background:var(--surface-2);padding:14px 16px;border-radius:8px;margin-bottom:16px;border-left:3px solid var(--brand)">
-        <div style="font-weight:600;margin-bottom:6px">Para sincronizar con el Excel:</div>
-        <ol style="margin:0;padding-left:20px;line-height:1.7;font-size:13.5px">
-          <li>Abre la carpeta del CRM (donde está <code>crm.bat</code>)</li>
-          <li>Doble-click en <code>crm.bat</code></li>
-          <li>El script detecta el JSON y actualiza el Excel + HTML</li>
-        </ol>
-      </div>
-      <div class="muted" style="font-size:12px;margin-bottom:14px">El JSON no contiene contraseñas. Es seguro compartirlo como backup.</div>
-      <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button class="btn outline" onclick="this.closest('div[style*=fixed]').remove()">Cerrar</button>
-      </div>
-    </div>`;
-  document.body.appendChild(ov);
-  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove()});
-}
 
 /* ──────────── export XLSX ──────────── */
 function loadSheetJS(){
@@ -6216,48 +6132,6 @@ $('#btnExportXLSX').addEventListener('click',async()=>{
   }catch(err){alert('Error exportando a Excel: '+err.message);}
 });
 
-/* ──────────── import (replace + merge) ──────────── */
-$('#btnImport').addEventListener('click',()=>{
-  if(!isCEO()&&!DB.consultants.find(c=>c.id===DB.currentUserId)?.isAdmin){alert('Solo el CEO o un Admin puede importar datos.');return;}
-  $('#importFileInput').click();
-});
-$('#importFileInput').addEventListener('change',e=>{
-  const file=e.target.files[0];if(!file)return;
-  const reader=new FileReader();
-  reader.onload=ev=>{
-    try{
-      const imported=JSON.parse(ev.target.result);
-      // Schema drift warning
-      if(imported.schemaVersion&&imported.schemaVersion!==SCHEMA_VERSION){
-        if(!confirm(`Schema del archivo (${imported.schemaVersion}) ≠ schema del CRM (${SCHEMA_VERSION}).\n¿Continuar de todos modos?`)){e.target.value='';return;}
-      }
-      // MERGE MODE: añade solo IDs nuevos, no toca lo existente
-      if(imported._mode==='merge'){
-        const counts={consultants:0,clients:0,companies:0,deals:0,activities:0,pupilos:0};
-        for(const k of Object.keys(counts)){
-          const existing=new Set((DB[k]||[]).map(x=>x.id));
-          const incoming=imported[k]||[];
-          const news=incoming.filter(x=>!existing.has(x.id));
-          DB[k]=(DB[k]||[]).concat(news);
-          counts[k]=news.length;
-        }
-        migrateAuth(DB);migrateExtra(DB);saveDB();render();
-        const summary=Object.entries(counts).map(([k,n])=>`${k}:+${n}`).join(' | ');
-        alert(`✓ Merge aplicado. ${summary}\n\nNo se modificaron registros existentes.`);
-        e.target.value='';return;
-      }
-      // REPLACE MODE
-      if(!imported.consultants||!imported.clients||!imported.deals){alert('Archivo JSON inválido — faltan secciones requeridas.');return;}
-      if(!confirm(`¿Reemplazar todos los datos con los del archivo "${file.name}"?\n\nEsta acción no se puede deshacer. Se recomienda exportar primero como respaldo.`))return;
-      Object.assign(DB,imported);
-      migrateAuth(DB);migrateExtra(DB);saveDB();
-      render();
-      alert('✓ Datos importados correctamente.');
-    }catch(err){alert('Error al leer el archivo: '+err.message);}
-    e.target.value='';
-  };
-  reader.readAsText(file);
-});
 
 /* ──────────── búsqueda global ──────────── */
 /* ──────────── búsqueda global cross-entidad ──────────── */
@@ -6481,86 +6355,6 @@ if('serviceWorker' in navigator && location.protocol !== 'file:'){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
 
-/* ──────────── 3.4 Bulk CSV import (clientes/empresas/pupilos) ──────────── */
-function csvParse(text){
-  /* Parser RFC 4180 simple: respeta comillas, escape "" dentro de comillas. */
-  const rows=[];let row=[],cur='',q=false;
-  for(let i=0;i<text.length;i++){
-    const c=text[i],n=text[i+1];
-    if(q){
-      if(c==='"'&&n==='"'){cur+='"';i++}
-      else if(c==='"'){q=false}
-      else cur+=c;
-    } else {
-      if(c==='"'){q=true}
-      else if(c===','){row.push(cur);cur=''}
-      else if(c==='\n'||c==='\r'){if(cur||row.length){row.push(cur);rows.push(row);row=[];cur=''} if(c==='\r'&&n==='\n')i++}
-      else cur+=c;
-    }
-  }
-  if(cur||row.length){row.push(cur);rows.push(row)}
-  return rows.filter(r=>r.length&&r.some(c=>String(c).trim()));
-}
-function openCsvImport(){
-  if(!isAdmin()){alert('Solo admins pueden importar masivamente.');return}
-  shell('Importación CSV',`
-    <div class="muted" style="margin-bottom:12px;font-size:12.5px">Pega un CSV o súbelo. La primera fila debe ser el header. Detección automática del tipo según las columnas.</div>
-    <div class="field"><label>Tipo de entidad</label><select id="csv_type">
-      <option value="auto">Auto-detectar</option>
-      <option value="clients">Clientes</option>
-      <option value="companies">Empresas</option>
-      <option value="pupilos">Pupilos</option>
-    </select></div>
-    <div class="field"><label>Subir archivo CSV</label><input id="csv_file" type="file" accept=".csv,.txt" /></div>
-    <div class="field"><label>O pegar texto</label><textarea id="csv_text" rows="8" placeholder="name,email,country,city,netWorth,notes\nJuan Perez,jp@ex.com,Spain,Madrid,5000000,Cliente referido"></textarea></div>
-    <div id="csv_preview" style="font-size:12px;margin-top:8px"></div>
-    <div class="muted" style="font-size:11.5px;margin-top:6px">Headers reconocidos:<br>· Clientes: name,email,phone,country,city,netWorth,source,tier,notes<br>· Empresas: name,industry,country,employees,netWorth,website,notes<br>· Pupilos: name,email,phone,university,program,startDate,endDate,mentor,region,notes</div>
-  `,()=>{
-    const text=document.getElementById('csv_text').value.trim();
-    if(!text){alert('Pega o sube un CSV primero.');return false}
-    const rows=csvParse(text);
-    if(rows.length<2){alert('El CSV necesita header + al menos 1 fila.');return false}
-    const headers=rows[0].map(h=>h.toString().trim().toLowerCase());
-    let type=document.getElementById('csv_type').value;
-    if(type==='auto'){
-      if(headers.includes('university')||headers.includes('mentor'))type='pupilos';
-      else if(headers.includes('industry')||headers.includes('website'))type='companies';
-      else type='clients';
-    }
-    const clean=v=>(v||'').toString().trim();
-    const numv=v=>{const n=parseFloat(clean(v).replace(/[^0-9.\-]/g,''));return isFinite(n)?Math.round(n):0};
-    let added=0;
-    for(let r=1;r<rows.length;r++){
-      const obj={};headers.forEach((h,i)=>obj[h]=clean(rows[r][i]));
-      if(!obj.name)continue;
-      if(type==='clients'){
-        DB.clients.push({id:uid('c'),name:obj.name,email:obj.email||'',phone:obj.phone||'',country:obj.country||'',city:obj.city||'',netWorth:numv(obj.networth||obj.net_worth),source:obj.source||'CSV import',tier:obj.tier||'',notes:obj.notes||'',comments:[]});
-      } else if(type==='companies'){
-        DB.companies.push({id:uid('co'),name:obj.name,industry:obj.industry||'',country:obj.country||'',employees:numv(obj.employees),netWorth:numv(obj.networth||obj.net_worth),website:obj.website||'',clientIds:[],notes:obj.notes||'',comments:[]});
-      } else if(type==='pupilos'){
-        DB.pupilos.push({id:uid('p'),name:obj.name,email:obj.email||'',phone:obj.phone||'',university:obj.university||'',program:obj.program||'',startDate:obj.startdate||obj.start_date||'',endDate:obj.enddate||obj.end_date||'',mentor:obj.mentor||null,region:obj.region||'',consultantId:null,leftCompany:'',leftRole:'',notes:obj.notes||'',docs:[]});
-      }
-      added++;
-    }
-    logAudit('create',type==='clients'?'client':type==='companies'?'company':'pupilo','bulk','+'+added+' via CSV import');
-    saveDB();
-    alert('+'+added+' '+type+' importados.');
-    return true;
-  });
-  /* live preview al pegar/subir */
-  setTimeout(()=>{
-    const ta=document.getElementById('csv_text');
-    const fi=document.getElementById('csv_file');
-    const pv=document.getElementById('csv_preview');
-    const upd=()=>{
-      const t=ta.value.trim();if(!t){pv.innerHTML='';return}
-      const rows=csvParse(t);
-      pv.innerHTML='<div style="background:var(--surface-2);padding:8px;border-radius:6px;border:1px solid var(--line)"><b>Preview:</b> '+rows.length+' filas (1 header + '+(rows.length-1)+' datos)<br><span class="muted" style="font-size:11px">Headers: '+(rows[0]||[]).slice(0,8).map(h=>String(h).trim()).join(', ')+'</span></div>';
-    };
-    if(ta)ta.addEventListener('input',upd);
-    if(fi)fi.addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{ta.value=ev.target.result;upd()};r.readAsText(f)});
-  },50);
-}
 
 /* ──────────── F4.2 Calendar export (.ics RFC 5545) ──────────── */
 function _icsEscape(s){return (s||'').toString().replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n')}
@@ -7431,7 +7225,6 @@ function openSettingsModal(){
         <div class="sb" style="color:var(--ink);font-size:13.5px;margin-bottom:8px">Datos locales</div>
         <div class="muted" style="font-size:12px;margin-bottom:8px">Si tienes problemas o quieres empezar limpio, puedes resetear los datos locales (no afecta al Excel ni al HTML, sólo a tu navegador).</div>
         <div class="flex gap-s">
-          <button class="btn sm outline" onclick="document.getElementById('btnExport').click()">📥 Exportar JSON antes</button>
           ${isAdmin()?'<button class="btn sm danger" onclick="reloadFromTemplate()">🗑 Resetear localStorage</button>':''}
         </div>
       </div>
@@ -7989,6 +7782,326 @@ const ChatWidget = (function(){
 
   return { init, open, close, toggle, _state: state };
 })();
+
+/* ──────────── F-ImportExcel: plantilla descargable ──────────── */
+function downloadImportTemplate(){
+  loadSheetJS().then(XLSX=>{
+    const wb=XLSX.utils.book_new();
+
+    const clientsHdr=['ID','Name','Email','Phone','Country','City','Net Worth USD','Source','Tier','Notes'];
+    const clientsEx =['cli1','Juan Pérez','juan.perez@example.com','+34 600 123 456','Spain','Madrid',5000000,'Referral','B','Cliente referido por X — interesado en wealth management'];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([clientsHdr, clientsEx]), 'Clients');
+
+    const companiesHdr=['ID','Name','Industry','Country','Employees','Net Worth USD','Linked Client IDs','Website','Notes'];
+    const companiesEx =['co1','Acme Holdings','Real Estate','Spain',45,12000000,'cli1','acme.com','Holding familiar — Juan es el patriarca'];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([companiesHdr, companiesEx]), 'Companies');
+
+    const dealsHdr=['ID','Title','Client ID','Company ID','Type','Stage','Amount USD','Expected Close','Notes'];
+    const dealsEx =['d1','Venta participación Acme','cli1','co1','sale','prospect',8000000,'2026-09-30','Lead inicial — pendiente NDA'];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([dealsHdr, dealsEx]), 'Deals');
+
+    XLSX.writeFile(wb, 'ceoadvisors_import_template.xlsx');
+  }).catch(err=>alert('Error cargando SheetJS: '+err.message));
+}
+
+/* ──────────── F-ImportExcel: parser ──────────── */
+/* Mapa de aliases case-insensitive header -> campo canónico. */
+const _impHeaderAlias = {
+  clients: {
+    'id':'id','nombre':'name','name':'name','email':'email','correo':'email','phone':'phone','teléfono':'phone','telefono':'phone',
+    'country':'country','pais':'country','país':'country','city':'city','ciudad':'city',
+    'net worth usd':'netWorth','net worth':'netWorth','networth':'netWorth','patrimonio':'netWorth',
+    'source':'source','fuente':'source','tier':'tier','notes':'notes','notas':'notes'
+  },
+  companies: {
+    'id':'id','name':'name','nombre':'name','empresa':'name','industry':'industry','industria':'industry',
+    'country':'country','pais':'country','país':'country','employees':'employees','empleados':'employees',
+    'net worth usd':'netWorth','net worth':'netWorth','networth':'netWorth',
+    'linked client ids':'clientIds','clientes vinculados':'clientIds','website':'website','web':'website',
+    'notes':'notes','notas':'notes'
+  },
+  deals: {
+    'id':'id','title':'title','titulo':'title','título':'title',
+    'client id':'clientId','cliente':'clientId','company id':'companyId','empresa':'companyId',
+    'type':'type','tipo':'type','stage':'stage','etapa':'stage','fase':'stage',
+    'amount usd':'amount','amount':'amount','monto':'amount','importe':'amount',
+    'expected close':'closeDate','fecha cierre':'closeDate','notes':'notes','notas':'notes'
+  }
+};
+
+/* parseExcelImport(workbook) → { clients:[{...,_row:N}], companies:[...], deals:[...] }
+   Devuelve raw, sin validar valores. _row es el número de fila Excel (1-indexed con header en fila 1)
+   para que los mensajes de error/warning sean accionables. */
+function parseExcelImport(wb){
+  const out={clients:[],companies:[],deals:[]};
+  const sheetMap={Clients:'clients',Companies:'companies',Deals:'deals'};
+  for(const [sheetName, kind] of Object.entries(sheetMap)){
+    const sheet=wb.Sheets[sheetName];
+    if(!sheet) continue;
+    const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:'',raw:false});
+    if(!rows.length) continue;
+    const rawHeaders=(rows[0]||[]).map(h=>String(h||'').trim().toLowerCase());
+    const aliasMap=_impHeaderAlias[kind];
+    const colMap={}; // canonicalField -> column index
+    rawHeaders.forEach((h,i)=>{ const canonical=aliasMap[h]; if(canonical) colMap[canonical]=i; });
+    for(let r=1;r<rows.length;r++){
+      const row=rows[r]||[];
+      // Skip filas totalmente vacías
+      if(row.every(c=>String(c||'').trim()==='')) continue;
+      const obj={_row:r+1};
+      for(const [field,colIdx] of Object.entries(colMap)){
+        obj[field]=String(row[colIdx]==null?'':row[colIdx]).trim();
+      }
+      out[kind].push(obj);
+    }
+  }
+  return out;
+}
+
+/* ──────────── F-ImportExcel: validador ──────────── */
+const _IMP_LIMIT=200;
+const _IMP_SOURCE_WHITELIST=new Set(['Referral','Outbound','Inbound','Conference','Partner','Other']);
+const _IMP_TIER_WHITELIST=new Set(['A','B','C','D']);
+const _IMP_TYPE_WHITELIST=new Set(['sale','finance','expand','advise','wealth']);
+const _IMP_STAGE_WHITELIST=new Set(['prospect','qualified','proposal','negotiation','won','lost']);
+
+function _impNum(v){const n=parseFloat(String(v||'').replace(/[^0-9.\-]/g,''));return isFinite(n)?Math.round(n):0;}
+function _impNorm(v){return String(v||'').trim();}
+function _impLower(v){return _impNorm(v).toLowerCase();}
+
+/* Devuelve {valid:{clients,companies,deals}, warnings:[strings], stats:{...}} */
+function validateImport(raw){
+  const warnings=[];
+  const existingEmails=new Set((DB.clients||[]).map(c=>_impLower(c.email)).filter(e=>e));
+
+  // ── Truncar por límite ──
+  const truncated={};
+  for(const kind of ['clients','companies','deals']){
+    if((raw[kind]||[]).length>_IMP_LIMIT){
+      truncated[kind]=raw[kind].length;
+      raw[kind]=raw[kind].slice(0,_IMP_LIMIT);
+      warnings.push(`${kind}: ${truncated[kind]} filas, máximo ${_IMP_LIMIT} — se importarán solo las primeras ${_IMP_LIMIT}.`);
+    }
+  }
+
+  // ── Clients ──
+  const validClients=[];
+  const seenTempIds={clients:new Set(),companies:new Set(),deals:new Set()};
+  for(const c of (raw.clients||[])){
+    const name=_impNorm(c.name);
+    if(!name){warnings.push(`Clients fila ${c._row}: Name obligatorio — fila omitida.`);continue;}
+    const email=_impNorm(c.email);
+    if(email && existingEmails.has(email.toLowerCase())){
+      warnings.push(`Clients fila ${c._row}: email ${email} ya existe — omitido.`);
+      continue;
+    }
+    if(email) existingEmails.add(email.toLowerCase()); // dedup dentro del mismo archivo
+    const tempId=_impNorm(c.id);
+    if(tempId) seenTempIds.clients.add(tempId);
+    const nw=_impNum(c.netWorth);
+    const sourceRaw=_impNorm(c.source);
+    const source=_IMP_SOURCE_WHITELIST.has(sourceRaw)?sourceRaw:'Other';
+    const tierRaw=_impNorm(c.tier).toUpperCase();
+    const tier=_IMP_TIER_WHITELIST.has(tierRaw)?tierRaw:autoTier(nw);
+    validClients.push({
+      _tempId: tempId, _row: c._row,
+      name, email, phone:_impNorm(c.phone),
+      country:_impNorm(c.country)||'—', city:_impNorm(c.city),
+      netWorth: nw, source, tier, notes:_impNorm(c.notes)
+    });
+  }
+
+  // ── Companies ──
+  const validCompanies=[];
+  for(const co of (raw.companies||[])){
+    const name=_impNorm(co.name);
+    if(!name){warnings.push(`Companies fila ${co._row}: Name obligatorio — fila omitida.`);continue;}
+    const tempId=_impNorm(co.id);
+    if(tempId) seenTempIds.companies.add(tempId);
+    // Parse Linked Client IDs y verificar que existan en clients
+    const linkedRaw=_impNorm(co.clientIds);
+    const linkedTempIds=linkedRaw?linkedRaw.split(',').map(s=>s.trim()).filter(Boolean):[];
+    const linkedValid=[];
+    for(const t of linkedTempIds){
+      if(seenTempIds.clients.has(t)) linkedValid.push(t);
+      else warnings.push(`Companies fila ${co._row}: cliente "${t}" no existe en hoja Clients — ignorado.`);
+    }
+    validCompanies.push({
+      _tempId: tempId, _row: co._row,
+      name, industry:_impNorm(co.industry),
+      country:_impNorm(co.country)||'—',
+      employees:_impNum(co.employees), netWorth:_impNum(co.netWorth),
+      _linkedTempIds: linkedValid,
+      website:_impNorm(co.website), notes:_impNorm(co.notes)
+    });
+  }
+
+  // ── Deals ──
+  const validDeals=[];
+  for(const d of (raw.deals||[])){
+    const title=_impNorm(d.title);
+    if(!title){warnings.push(`Deals fila ${d._row}: Title obligatorio — fila omitida.`);continue;}
+    const tempId=_impNorm(d.id);
+    if(tempId) seenTempIds.deals.add(tempId);
+    let clientTempId=_impNorm(d.clientId);
+    if(clientTempId && !seenTempIds.clients.has(clientTempId)){
+      warnings.push(`Deals fila ${d._row}: Client ID "${clientTempId}" no existe — creado sin cliente.`);
+      clientTempId='';
+    }
+    let companyTempId=_impNorm(d.companyId);
+    if(companyTempId && !seenTempIds.companies.has(companyTempId)){
+      warnings.push(`Deals fila ${d._row}: Company ID "${companyTempId}" no existe — creado sin empresa.`);
+      companyTempId='';
+    }
+    const typeRaw=_impLower(d.type);
+    const type=_IMP_TYPE_WHITELIST.has(typeRaw)?typeRaw:'advise';
+    const stageRaw=_impLower(d.stage);
+    const stage=_IMP_STAGE_WHITELIST.has(stageRaw)?stageRaw:'prospect';
+    validDeals.push({
+      _row: d._row,
+      title, _clientTempId: clientTempId, _companyTempId: companyTempId,
+      type, stage,
+      amount:_impNum(d.amount),
+      closeDate:_impNorm(d.closeDate),
+      notes:_impNorm(d.notes)
+    });
+  }
+
+  return {
+    valid: { clients: validClients, companies: validCompanies, deals: validDeals },
+    warnings,
+    stats: {
+      clients: validClients.length,
+      companies: validCompanies.length,
+      deals: validDeals.length,
+      clientsSkipped: (raw.clients||[]).length - validClients.length,
+      companiesSkipped: (raw.companies||[]).length - validCompanies.length,
+      dealsSkipped: (raw.deals||[]).length - validDeals.length
+    }
+  };
+}
+
+/* ──────────── F-ImportExcel: aplicador ──────────── */
+function applyImport(valid){
+  const nowIso=new Date().toISOString();
+  const myId=DB.currentUserId;
+
+  // Resolve temp IDs -> IDs reales
+  const cliMap=new Map(); // tempId -> realId
+  const coMap=new Map();
+
+  for(const c of valid.clients){
+    const id=uid('c');
+    if(c._tempId) cliMap.set(c._tempId,id);
+    DB.clients.push({
+      id, name:c.name, email:c.email, phone:c.phone,
+      country:c.country, city:c.city,
+      netWorth:c.netWorth, source:c.source, tier:c.tier,
+      notes:c.notes, comments:[], tags:[]
+    });
+  }
+
+  for(const co of valid.companies){
+    const id=uid('co');
+    if(co._tempId) coMap.set(co._tempId,id);
+    const clientIds=(co._linkedTempIds||[]).map(t=>cliMap.get(t)).filter(Boolean);
+    DB.companies.push({
+      id, name:co.name, industry:co.industry,
+      country:co.country, employees:co.employees, netWorth:co.netWorth,
+      clientIds, website:co.website, notes:co.notes, comments:[]
+    });
+  }
+
+  for(const d of valid.deals){
+    const id=uid('d');
+    const clientId=d._clientTempId?(cliMap.get(d._clientTempId)||''):'';
+    const companyId=d._companyTempId?(coMap.get(d._companyTempId)||''):'';
+    DB.deals.push({
+      id, title:d.title, clientId, companyId,
+      type:d.type, stage:d.stage,
+      amount:d.amount, closeDate:d.closeDate, notes:d.notes,
+      splits:[{u:myId,pct:100}],
+      stage_history:[{stage:d.stage,at:nowIso,by:myId}],
+      comments:[], tags:[],
+      createdAt: nowIso
+    });
+  }
+
+  saveDB();
+}
+
+/* ──────────── F-ImportExcel: modal preview + orchestrator ──────────── */
+function renderImportPreviewModal(report){
+  return new Promise(resolve=>{
+    const {stats, warnings} = report;
+    const totalValid = stats.clients + stats.companies + stats.deals;
+    const dupSkipText = stats.clientsSkipped>0 ? ` (${stats.clientsSkipped} omitidos)` : '';
+    const ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    const warningsHTML = warnings.length
+      ? `<details ${warnings.length<=3?'open':''} style="margin-top:14px"><summary style="cursor:pointer;font-weight:600;color:var(--ink)">Advertencias (${warnings.length})</summary><ul style="margin:8px 0 0;padding-left:20px;font-size:12.5px;line-height:1.55;color:var(--muted);max-height:240px;overflow:auto">${warnings.map(w=>`<li>${w.replace(/</g,'&lt;')}</li>`).join('')}</ul></details>`
+      : '';
+    const confirmDisabled = totalValid===0;
+    ov.innerHTML=`
+      <div style="background:var(--surface);border-radius:12px;max-width:560px;width:100%;padding:24px 26px;box-shadow:0 20px 60px rgba(0,0,0,.3);border:1px solid var(--line)">
+        <h2 style="margin:0 0 12px;color:var(--ink);font-size:19px">Importar Excel — Preview</h2>
+        ${totalValid===0
+          ? '<div style="background:var(--surface-2);padding:14px;border-radius:8px;border-left:3px solid var(--amber,#d97706);font-size:13px">Nada que importar — corrige el archivo y reintenta.</div>'
+          : `<div style="background:var(--surface-2);padding:14px 16px;border-radius:8px;font-size:13.5px;line-height:1.85">
+              <div>✓ <b>Clients</b> &nbsp;: ${stats.clients} nuevos${dupSkipText}</div>
+              <div>✓ <b>Companies</b>: ${stats.companies} nuevos</div>
+              <div>✓ <b>Deals</b> &nbsp;&nbsp;: ${stats.deals} nuevos <span class="muted" style="font-size:11.5px">(todos a tu nombre, A1 100%)</span></div>
+            </div>`}
+        ${warningsHTML}
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+          <button class="btn ghost" id="impCancel">Cancelar</button>
+          ${confirmDisabled ? '' : '<button class="btn primary" id="impConfirm">Confirmar import</button>'}
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close=ok=>{ov.remove();resolve(ok);};
+    ov.querySelector('#impCancel').addEventListener('click',()=>close(false));
+    const cf=ov.querySelector('#impConfirm');
+    if(cf) cf.addEventListener('click',()=>close(true));
+    ov.addEventListener('click',e=>{if(e.target===ov)close(false);});
+  });
+}
+
+function openImportExcel(){
+  const input=$('#importXLSXInput');
+  if(!input) return;
+  input.value=''; // reset
+  input.onchange = async (e)=>{
+    const file=e.target.files[0];
+    if(!file) return;
+    let wb;
+    try{
+      const XLSX=await loadSheetJS();
+      const buf=await file.arrayBuffer();
+      wb=XLSX.read(buf,{type:'array'});
+    }catch(err){
+      alert('Archivo Excel no válido — descarga la plantilla y úsala como referencia.\n\nDetalle: '+err.message);
+      return;
+    }
+    const hasAny=['Clients','Companies','Deals'].some(s=>wb.Sheets[s]);
+    if(!hasAny){
+      alert('El archivo no contiene ninguna de las hojas esperadas (Clients, Companies, Deals).\n\nDescarga la plantilla y úsala como referencia.');
+      return;
+    }
+    const raw=parseExcelImport(wb);
+    const report=validateImport(raw);
+    const ok=await renderImportPreviewModal(report);
+    if(!ok) return;
+    applyImport(report.valid);
+    try{ render(); }catch(_){}
+    const s=report.stats;
+    alert(`✓ Importado: ${s.clients} clientes, ${s.companies} empresas, ${s.deals} deals.`);
+  };
+  input.click();
+}
+
+/* Listener del botón Importar Excel */
+$('#btnImportXLSX')?.addEventListener('click', openImportExcel);
 
 /* boot */
 state.authed=false;
