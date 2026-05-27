@@ -933,7 +933,7 @@ async function fetchFromSupabase(){
   return {
     consultants:c.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,name:x.name,role:x.role,isCEO:x.is_ceo,isAdmin:x.is_admin,email:x.email,region:x.region,bio:x.bio,prefs:x.prefs||{}})),
     clients:cl.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,_isDemo:x.is_demo,name:x.name,email:x.email,phone:x.phone,country:x.country,city:x.city,netWorth:Number(x.net_worth)||0,source:x.source,tier:x.tier,notes:x.notes,comments:x.comments||[],tags:x.tags||[]})),
-    companies:co.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,_isDemo:x.is_demo,name:x.name,industry:x.industry,country:x.country,employees:x.employees,netWorth:Number(x.net_worth)||0,website:x.website,clientIds:(x.client_ids||[]).map(u=>cMap.get(u)).filter(Boolean),notes:x.notes,comments:x.comments||[]})),
+    companies:co.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,_isDemo:x.is_demo,name:x.name,industry:x.industry,country:x.country,employees:x.employees,netWorth:Number(x.net_worth)||0,website:x.website,clientIds:(x.client_ids||[]).map(u=>cMap.get(u)).filter(Boolean),notes:x.notes,comments:x.comments||[],sourceType:x.source_type||null,sourceRef:x.source_ref?(x.source_type==='client'?(cMap.get(x.source_ref)||null):x.source_type==='consultant'?(uMap.get(x.source_ref)||null):null):null,sourceNote:x.source_note||''})),
     deals:d.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,_isDemo:x.is_demo,title:x.title,clientId:cMap.get(x.client_id)||null,companyId:coMap.get(x.company_id)||null,type:x.type,stage:x.stage,amount:Number(x.amount)||0,closeDate:x.close_date,splits:(x.splits||[]).map(s=>({u:uMap.get(s.u)||s.u,pct:s.pct})),notes:x.notes,createdAt:x.created_at?x.created_at.slice(0,10):'',comments:x.comments||[],stageHistory:(x.stage_history&&x.stage_history.length)?x.stage_history:[{stage:x.stage,ts:x.created_at?x.created_at.slice(0,10):''}],lostReason:x.lost_reason||null,wonAt:x.won_at||null,lostAt:x.lost_at||null,tags:x.tags||[]})),
     activities:a.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,_isDemo:x.is_demo,type:x.type,date:x.date,clientId:cMap.get(x.client_id)||null,companyId:coMap.get(x.company_id)||null,dealId:dMap.get(x.deal_id)||null,title:x.title,notes:x.notes,done:!!x.done,createdBy:uMap.get(x.created_by)||null,assignedTo:uMap.get(x.assigned_to)||null})),
     pupilos:p.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,name:x.name,email:x.email,university:x.university,program:x.program,startDate:x.start_date,endDate:x.end_date,mentor:x.mentor,region:x.region,consultantId:x.consultant_id?uMap.get(x.consultant_id):null,leftCompany:x.left_company,leftRole:x.left_role,notes:x.notes,docs:x.docs||[]})),
@@ -1162,14 +1162,23 @@ function _supaToRow(table, x){
     comments: Array.isArray(x.comments)?x.comments:[],
     tags: Array.isArray(x.tags)?x.tags:[]
   });
-  if(table==='companies') return Object.assign(base, {
-    is_demo:!!x._isDemo, name:x.name||'', industry:x.industry||'',
-    country:x.country||'', employees:Number(x.employees)||0,
-    net_worth:Number(x.netWorth)||0, website:x.website||'',
-    client_ids:(x.clientIds||[]).map(c=>_supaResolveUuid('c',c)).filter(Boolean),
-    notes:x.notes||'',
-    comments: Array.isArray(x.comments)?x.comments:[]
-  });
+  if(table==='companies'){
+    const srcType = (x.sourceType==='consultant'||x.sourceType==='client'||x.sourceType==='other') ? x.sourceType : null;
+    const srcRef = srcType==='consultant' ? _supaResolveUuid('u',x.sourceRef)
+                 : srcType==='client'     ? _supaResolveUuid('c',x.sourceRef)
+                 : null;
+    return Object.assign(base, {
+      is_demo:!!x._isDemo, name:x.name||'', industry:x.industry||'',
+      country:x.country||'', employees:Number(x.employees)||0,
+      net_worth:Number(x.netWorth)||0, website:x.website||'',
+      client_ids:(x.clientIds||[]).map(c=>_supaResolveUuid('c',c)).filter(Boolean),
+      notes:x.notes||'',
+      comments: Array.isArray(x.comments)?x.comments:[],
+      source_type: srcType,
+      source_ref:  srcRef,
+      source_note: x.sourceNote||''
+    });
+  }
   if(table==='deals'){
     const type  = DEAL_TYPES.includes(x.type)  ? x.type  : 'mandate';
     const stage = DEAL_STAGES.includes(x.stage)? x.stage : 'lead';
@@ -5298,13 +5307,29 @@ function openCompany(id){
   const deals=DB.deals.filter(d=>d.companyId===id&&(isCEO()||myDealsSet.has(d.id)));
   const acts=(isCEO()?DB.activities:scopedActivities()).filter(a=>a.companyId===id).sort((a,b)=>b.date.localeCompare(a.date));
   drawerHd.innerHTML=`<div class="flex gap-m ac"><div class="pill-avatar c" style="width:46px;height:46px;font-size:15px">${initials(co.name)}</div><div><h2>${co.name}</h2><div class="meta"><span class="tag gray">${co.industry}</span> · ${co.country} · ${co.employees.toLocaleString()} empleados</div></div></div><div class="flex gap-s ac"><button class="btn sm outline" onclick="modalCompany({},findCompany('${co.id}'))" title="Editar empresa">✎ Editar</button><button class="drawer-close" onclick="closeDrawer()">✕</button></div>`;
+  /* F16.2: source of contact con link a la entidad o nota libre */
+  const srcHtml=(()=>{
+    if(co.sourceType==='consultant'){
+      const u=findConsultant(co.sourceRef);
+      return u?`<span class="tag gray" style="font-size:10.5px">Consultor</span> <a style="cursor:pointer;color:var(--accent)" onclick="openConsultant('${u.id}')">${u.name}</a>`:'<span class="muted">Consultor (ref no encontrada)</span>';
+    }
+    if(co.sourceType==='client'){
+      const cl=findClient(co.sourceRef);
+      return cl?`<span class="tag gray" style="font-size:10.5px">Cliente</span> <a style="cursor:pointer;color:var(--accent)" onclick="openClient('${cl.id}')">${cl.name}</a>`:'<span class="muted">Cliente (ref no encontrada)</span>';
+    }
+    if(co.sourceType==='other'){
+      return `<span class="tag gray" style="font-size:10.5px">Otro</span> ${co.sourceNote?co.sourceNote.replace(/</g,'&lt;'):'<span class="muted">sin detalle</span>'}`;
+    }
+    return '<span class="muted">—</span>';
+  })();
   drawerBody.innerHTML=`
     <div class="field-grid">
       <div class="field"><label>Net Worth</label><div class="v sb" style="color:var(--brand)">${fmtMoneyFull(co.netWorth)}</div></div>
       <div class="field"><label>Web</label><div class="v">${co.website?'<a target="_blank" href="https://'+co.website+'">'+co.website+'</a>':'—'}</div></div>
       <div class="field"><label>País</label><div class="v">${co.country}</div></div>
       <div class="field"><label>Empleados</label><div class="v">${co.employees.toLocaleString()}</div></div>
-      <div class="field" style="grid-column:span 2"><label>Cliente(s) vinculados</label><div class="v">${owners.map(o=>`<a style="cursor:pointer;color:var(--accent);margin-right:8px" onclick="openClient('${o.id}')">${o.name}</a>`).join('')}</div></div>
+      <div class="field" style="grid-column:span 2"><label>Source of contact</label><div class="v">${srcHtml}</div></div>
+      <div class="field" style="grid-column:span 2"><label>Cliente(s) vinculados</label><div class="v">${owners.map(o=>`<a style="cursor:pointer;color:var(--accent);margin-right:8px" onclick="openClient('${o.id}')">${o.name}</a>`).join('')||'<span class="muted">—</span>'}</div></div>
     </div>
     <div class="tabs">
       <div class="tab" data-t="timeline" data-drawer-tab="timeline">Timeline</div>
@@ -5799,16 +5824,39 @@ function modalClient(p,existing){
   });
 }
 function modalCompany(p,existing){
-  /* F16.1: si existing, modo edición. Campo alineado con plantilla Excel: Notes (col I) */
+  /* F16.1: si existing, modo edición. F16.2: source of contact (consultant | client | other). */
   p=p||{};
   const e=existing||null;
   const ownerIds=e?(e.clientIds||[]):(p.clientId?[p.clientId]:[]);
+  const srcType=e?(e.sourceType||''):'';
+  const srcRef=e?(e.sourceRef||''):'';
+  const srcNote=e?(e.sourceNote||''):'';
+  const advisors=DB.consultants;
+  const clientOpts=DB.clients.map(c=>`<option value="${c.id}" ${c.id===srcRef?'selected':''}>${c.name}</option>`).join('');
+  const advisorOpts=advisors.map(c=>`<option value="${c.id}" ${c.id===srcRef?'selected':''}>${c.name} · ${c.role}</option>`).join('');
   shell(e?'Editar empresa — '+e.name:'Nueva empresa',`
     <div class="field"><label>Nombre</label><input id="f_name" value="${(e?e.name:'').replace(/"/g,'&quot;')}" placeholder="Nombre de la empresa" /></div>
     <div class="row"><div class="field"><label>Industria</label><input id="f_ind" value="${(e?e.industry||'':'').replace(/"/g,'&quot;')}" placeholder="Hospitality, Retail…" /></div><div class="field"><label>País</label><input id="f_country" value="${(e?e.country||'':'').replace(/"/g,'&quot;')}" /></div></div>
     <div class="row"><div class="field"><label>Empleados</label><input id="f_emp" type="number" value="${e?(e.employees||0):0}" /></div><div class="field"><label>Net Worth (USD)</label><input id="f_nw" type="number" value="${e?(e.netWorth||0):0}" /></div></div>
     <div class="field"><label>Cliente(s) dueños</label><select id="f_owners" multiple size="5" style="width:100%">${DB.clients.map(c=>`<option value="${c.id}" ${ownerIds.includes(c.id)?'selected':''}>${c.name}</option>`).join('')}</select><div class="muted" style="font-size:11px;margin-top:4px">⌘/Ctrl para seleccionar varios</div></div>
     <div class="field"><label>Web</label><input id="f_web" value="${(e?e.website||'':'').replace(/"/g,'&quot;')}" placeholder="dominio.com" /></div>
+    <div class="row">
+      <div class="field"><label>Source of contact <span class="muted" style="font-size:11px;font-weight:400">· cómo llegó</span></label>
+        <select id="f_srcType" onchange="window.__coSrcSwap(this.value)">
+          <option value="" ${!srcType?'selected':''}>—</option>
+          <option value="consultant" ${srcType==='consultant'?'selected':''}>Consultor</option>
+          <option value="client" ${srcType==='client'?'selected':''}>Cliente</option>
+          <option value="other" ${srcType==='other'?'selected':''}>Otro</option>
+        </select>
+      </div>
+      <div class="field" id="f_srcRefWrap">
+        <label>Referencia</label>
+        <select id="f_srcRefConsultant" style="display:${srcType==='consultant'?'block':'none'}">${advisorOpts}</select>
+        <select id="f_srcRefClient" style="display:${srcType==='client'?'block':'none'}">${clientOpts}</select>
+        <input id="f_srcNote" type="text" value="${srcNote.replace(/"/g,'&quot;')}" placeholder="¿De dónde?" style="display:${srcType==='other'?'block':'none'}" />
+        <div id="f_srcEmpty" class="muted" style="font-size:11px;display:${!srcType?'block':'none'}">Selecciona un tipo</div>
+      </div>
+    </div>
     <div class="field"><label>Notas</label><textarea id="f_notes" rows="3" placeholder="Contexto, historial, particularidades…">${e?(e.notes||''):''}</textarea></div>`,()=>{
     const name=$('#f_name').value.trim();if(!name){alert('Nombre requerido');return false}
     /* F5.3: detectar duplicado sólo al crear */
@@ -5816,7 +5864,12 @@ function modalCompany(p,existing){
       const dup=findSimilarName(name, DB.companies);
       if(dup&&!confirmDuplicate(name,'empresa',dup,openCompany))return false;
     }
-    const payload={name,industry:$('#f_ind').value.trim()||'—',country:$('#f_country').value.trim()||'—',employees:Number($('#f_emp').value)||0,netWorth:Number($('#f_nw').value)||0,clientIds:[...$('#f_owners').selectedOptions].map(o=>o.value),website:$('#f_web').value.trim(),notes:$('#f_notes').value.trim()};
+    const sourceType=$('#f_srcType').value||null;
+    let sourceRef=null, sourceNote='';
+    if(sourceType==='consultant') sourceRef=$('#f_srcRefConsultant').value||null;
+    else if(sourceType==='client') sourceRef=$('#f_srcRefClient').value||null;
+    else if(sourceType==='other')  sourceNote=$('#f_srcNote').value.trim();
+    const payload={name,industry:$('#f_ind').value.trim()||'—',country:$('#f_country').value.trim()||'—',employees:Number($('#f_emp').value)||0,netWorth:Number($('#f_nw').value)||0,clientIds:[...$('#f_owners').selectedOptions].map(o=>o.value),website:$('#f_web').value.trim(),notes:$('#f_notes').value.trim(),sourceType,sourceRef,sourceNote};
     if(e){
       Object.assign(e,payload);
       logAudit('update','company',e.id,'Empresa editada');
@@ -5826,6 +5879,13 @@ function modalCompany(p,existing){
     }
     return true;
   });
+  /* Conmutador del campo Source — definido en window para que el onchange inline lo vea */
+  window.__coSrcSwap=function(v){
+    document.getElementById('f_srcRefConsultant').style.display = v==='consultant' ? 'block' : 'none';
+    document.getElementById('f_srcRefClient').style.display     = v==='client'     ? 'block' : 'none';
+    document.getElementById('f_srcNote').style.display           = v==='other'      ? 'block' : 'none';
+    document.getElementById('f_srcEmpty').style.display          = v==='' ? 'block' : 'none';
+  };
 }
 function modalDeal(existing,editingSplitsOnly,preset={}){
   const splits=existing?JSON.parse(JSON.stringify(existing.splits||[])):[{u:DB.currentUserId,pct:100}];
