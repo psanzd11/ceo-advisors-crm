@@ -730,6 +730,7 @@
       <div class="nav-item" data-view="cleanup" title="Mantenimiento"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><span class="lbl">Mantenimiento</span></div>
       <div class="nav-item" data-view="audit" title="Auditoría"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span class="lbl">Auditoría</span></div>
       <div class="nav-item" data-view="templates" title="Plantillas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h8l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M14 3v6h6"/><path d="M9 13h7M9 17h5"/></svg><span class="lbl">Plantillas</span></div>
+      <div class="nav-item" data-view="assets" title="Digital Assets"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 14h8M8 17h5"/></svg><span class="lbl">Digital Assets</span></div>
     </div>
     <div class="nav-footer" id="navFooter"></div>
   </aside>
@@ -916,15 +917,16 @@ async function fetchFromSupabase(){
   if(!sb)throw new Error('Cliente Supabase no inicializado');
   const {data:{session}}=await sb.auth.getSession();
   if(!session)return null;
-  const [c,cl,co,d,a,p]=await Promise.all([
+  const [c,cl,co,d,a,p,da]=await Promise.all([
     sb.from('consultants').select('*'),
     sb.from('clients').select('*'),
     sb.from('companies').select('*'),
     sb.from('deals').select('*'),
     sb.from('activities').select('*'),
     sb.from('pupilos').select('*'),
+    sb.from('digital_assets').select('*'),
   ]);
-  const errs=[c,cl,co,d,a,p].filter(r=>r.error);
+  const errs=[c,cl,co,d,a,p,da].filter(r=>r.error);
   if(errs.length)throw new Error('Supabase fetch: '+errs[0].error.message);
   const uMap=new Map(c.data.map(x=>[x.id,x.code]));
   const cMap=new Map(cl.data.map(x=>[x.id,x.code]));
@@ -937,6 +939,7 @@ async function fetchFromSupabase(){
     deals:d.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,_isDemo:x.is_demo,title:x.title,clientId:cMap.get(x.client_id)||null,companyId:coMap.get(x.company_id)||null,type:x.type,stage:x.stage,amount:Number(x.amount)||0,closeDate:x.close_date,splits:(x.splits||[]).map(s=>({u:uMap.get(s.u)||s.u,pct:s.pct})),notes:x.notes,createdAt:x.created_at?x.created_at.slice(0,10):'',comments:x.comments||[],stageHistory:(x.stage_history&&x.stage_history.length)?x.stage_history:[{stage:x.stage,ts:x.created_at?x.created_at.slice(0,10):''}],lostReason:x.lost_reason||null,wonAt:x.won_at||null,lostAt:x.lost_at||null,tags:x.tags||[]})),
     activities:a.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,_isDemo:x.is_demo,type:x.type,date:x.date,clientId:cMap.get(x.client_id)||null,companyId:coMap.get(x.company_id)||null,dealId:dMap.get(x.deal_id)||null,title:x.title,notes:x.notes,done:!!x.done,createdBy:uMap.get(x.created_by)||null,assignedTo:uMap.get(x.assigned_to)||null})),
     pupilos:p.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,name:x.name,email:x.email,university:x.university,program:x.program,startDate:x.start_date,endDate:x.end_date,mentor:x.mentor,region:x.region,consultantId:x.consultant_id?uMap.get(x.consultant_id):null,leftCompany:x.left_company,leftRole:x.left_role,notes:x.notes,docs:x.docs||[]})),
+    digitalAssets:da.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,_isDemo:x.is_demo,name:x.name,type:x.type,filePath:x.file_path,fileSizeBytes:Number(x.file_size_bytes)||0,mimeType:x.mime_type||'',description:x.description||'',tags:x.tags||[],createdBy:x.created_by?uMap.get(x.created_by):null,createdAt:x.created_at})),
     _fromSupabase:true,_supaFetchedAt:new Date().toISOString(),
   };
 }
@@ -1068,7 +1071,8 @@ function _supaDropFreshFromQueue(freshDB) {
     const q = JSON.parse(localStorage.getItem(SUPA_QUEUE_KEY) || '{"upserts":{},"deletes":{}}');
     const tables = { consultants: freshDB.consultants, clients: freshDB.clients,
                      companies: freshDB.companies, deals: freshDB.deals,
-                     activities: freshDB.activities, pupilos: freshDB.pupilos };
+                     activities: freshDB.activities, pupilos: freshDB.pupilos,
+                     digital_assets: freshDB.digitalAssets };
     const droppedByTable = {};
     let queueChanged = false;
     for (const [table, rows] of Object.entries(tables)) {
@@ -1221,6 +1225,19 @@ function _supaToRow(table, x){
     left_company:x.leftCompany||'', left_role:x.leftRole||'',
     notes:x.notes||'', docs:Array.isArray(x.docs)?x.docs:[]
   });
+  if(table==='digital_assets'){
+    const ASSET_TYPES=['material','presentacion','lectura','guia'];
+    const type=ASSET_TYPES.includes(x.type)?x.type:'material';
+    return Object.assign(base, {
+      is_demo:!!x._isDemo, name:x.name||'', type,
+      file_path:x.filePath||null,
+      file_size_bytes:Number(x.fileSizeBytes)||0,
+      mime_type:x.mimeType||'',
+      description:x.description||'',
+      tags:Array.isArray(x.tags)?x.tags:[],
+      created_by:_supaResolveUuid('u',x.createdBy)
+    });
+  }
   return null;
 }
 
@@ -1242,7 +1259,7 @@ function _supaSaveSnapshot(snap){
   try{ localStorage.setItem(SUPA_SNAPSHOT_KEY, JSON.stringify(snap)) }catch(e){}
 }
 function _supaUpdateSnapshot(){
-  const tables = {consultants:DB.consultants, clients:DB.clients, companies:DB.companies, deals:DB.deals, activities:DB.activities, pupilos:DB.pupilos};
+  const tables = {consultants:DB.consultants, clients:DB.clients, companies:DB.companies, deals:DB.deals, activities:DB.activities, pupilos:DB.pupilos, digital_assets:DB.digitalAssets};
   const snap = {};
   for(const [t, rows] of Object.entries(tables)){
     if(!Array.isArray(rows)) continue;
@@ -1256,7 +1273,7 @@ function _supaUpdateSnapshot(){
 }
 
 function _supaComputeDirty(){
-  const tables = {consultants:DB.consultants, clients:DB.clients, companies:DB.companies, deals:DB.deals, activities:DB.activities, pupilos:DB.pupilos};
+  const tables = {consultants:DB.consultants, clients:DB.clients, companies:DB.companies, deals:DB.deals, activities:DB.activities, pupilos:DB.pupilos, digital_assets:DB.digitalAssets};
   const snap = _supaLoadSnapshot();
   const dirty = {};
   for(const [t, rows] of Object.entries(tables)){
@@ -1269,7 +1286,7 @@ function _supaComputeDirty(){
 }
 
 function _supaComputeDeletes(){
-  const tables = {consultants:DB.consultants, clients:DB.clients, companies:DB.companies, deals:DB.deals, activities:DB.activities, pupilos:DB.pupilos};
+  const tables = {consultants:DB.consultants, clients:DB.clients, companies:DB.companies, deals:DB.deals, activities:DB.activities, pupilos:DB.pupilos, digital_assets:DB.digitalAssets};
   const snap = _supaLoadSnapshot();
   const out = {};
   for(const [t, rows] of Object.entries(tables)){
@@ -1413,7 +1430,7 @@ async function resolveConflictForce(){
   // Re-bumpear updated_at para que excluded > existing
   for(const [t, arr] of Object.entries(bag)){
     for(const c of (arr||[])){
-      const list = ({consultants:DB.consultants,clients:DB.clients,companies:DB.companies,deals:DB.deals,activities:DB.activities,pupilos:DB.pupilos})[t]||[];
+      const list = ({consultants:DB.consultants,clients:DB.clients,companies:DB.companies,deals:DB.deals,activities:DB.activities,pupilos:DB.pupilos,digital_assets:DB.digitalAssets})[t]||[];
       const row = list.find(r => r._supaId===c.id);
       if(row) row._supaUpdatedAt = new Date(Date.now()+60000).toISOString(); // +60s future
     }
@@ -1528,7 +1545,7 @@ async function flushSupabase(){
 
     // F15.4a: continue tras error en cada tabla, no break
     const errors = [];
-    for(const t of ['consultants','clients','companies','deals','activities','pupilos']){
+    for(const t of ['consultants','clients','companies','deals','activities','pupilos','digital_assets']){
       const byId = q.upserts[t] || {};
       const rows = Object.values(byId);
       if(!rows.length) continue;
@@ -1552,7 +1569,7 @@ async function flushSupabase(){
       }
     }
 
-    for(const t of ['activities','deals','pupilos','companies','clients','consultants']){
+    for(const t of ['digital_assets','activities','deals','pupilos','companies','clients','consultants']){
       const ids = q.deletes[t] || [];
       if(!ids.length) continue;
       try{
@@ -1666,6 +1683,11 @@ const MIGRATIONS = [
     });
     return d;
   }},
+  {to:6, fn:d=>{
+    /* F16.3: digital assets — colección compartida del equipo */
+    if(!Array.isArray(d.digitalAssets))d.digitalAssets=[];
+    return d;
+  }},
 ];
 function applyMigrations(d){
   if(!d)return d;
@@ -1768,7 +1790,7 @@ function normalizeRelations(){
 /* uid → ID secuencial estable (p10, p11, c20, d50…) que sobrevive al round-trip Excel ↔ CRM.
    Encuentra el mayor sufijo numérico del prefijo en TODA la base y devuelve el siguiente. */
 function uid(p){
-  const buckets={u:DB.consultants||[],c:DB.clients||[],co:DB.companies||[],d:DB.deals||[],a:DB.activities||[],p:DB.pupilos||[]};
+  const buckets={u:DB.consultants||[],c:DB.clients||[],co:DB.companies||[],d:DB.deals||[],a:DB.activities||[],p:DB.pupilos||[],da:DB.digitalAssets||[]};
   const all=buckets[p]||[];
   const re=new RegExp('^'+p+'(\\d+)$');
   let max=0;
@@ -2074,13 +2096,16 @@ const state={
   pupiloCalMonths:9, /* nº de meses visibles en el calendario gantt */
   pupiloFilter:{q:'',mentor:'all',university:'all',region:'all',roleType:'all'},
   pupiloSort:{by:'startDate',dir:'asc'},
+  /* F16.3 digital assets */
+  assetTab:'material',
+  assetFilter:{q:'',tag:'all'},
 };
 
 /* ──────────── nav ──────────── */
 function setView(v){
   state.view=v;
   $$('#nav .nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===v));
-  const titles={today:'Hoy',dashboard:'Dashboard',clients:'Clientes',companies:'Empresas',deals:'Pipeline',activities:'Actividades',consultants:'Consultores',pupilos:'Pupilos',influence:'Influence',commissions:'Comisiones',templates:'Plantillas',analytics:'Analítica avanzada'};
+  const titles={today:'Hoy',dashboard:'Dashboard',clients:'Clientes',companies:'Empresas',deals:'Pipeline',activities:'Actividades',consultants:'Consultores',pupilos:'Pupilos',influence:'Influence',commissions:'Comisiones',templates:'Plantillas',analytics:'Analítica avanzada',assets:'Digital Assets'};
   $('#crumbs').innerHTML=`<strong>${titles[v]}</strong>`;
   render();
 }
@@ -2421,6 +2446,7 @@ function render(){setTimeout(()=>{try{renderBulkBar()}catch(e){}try{updateTabTit
   if(state.view==='influence')return renderInfluence(root);
   if(state.view==='commissions')return renderCommissions(root);
   if(state.view==='templates')return renderTemplates(root);
+  if(state.view==='assets')return renderAssets(root);
 }
 
 /* ──────────── Hoy — landing operativo ──────────── */
@@ -8187,6 +8213,177 @@ function openImportExcel(){
 
 /* Listener del botón Importar Excel */
 $('#btnImportXLSX')?.addEventListener('click', openImportExcel);
+
+/* ──────────── F16.3 Digital Assets ──────────── */
+const ASSET_TYPES=[
+  {id:'material',     label:'Material',     icon:'📦'},
+  {id:'presentacion', label:'Presentación', icon:'🎞️'},
+  {id:'lectura',      label:'Lectura',      icon:'📖'},
+  {id:'guia',         label:'Guía',         icon:'🧭'}
+];
+function assetTypeMeta(t){return ASSET_TYPES.find(x=>x.id===t)||ASSET_TYPES[0]}
+function fmtBytes(n){if(!n)return '—';const u=['B','KB','MB','GB'];let i=0;n=Number(n)||0;while(n>=1024&&i<u.length-1){n/=1024;i++}return n.toFixed(n<10&&i?1:0)+' '+u[i]}
+function _scopedAssets(){return (DB.digitalAssets||[]).filter(a=>!(state.hideDemo&&a._isDemo))}
+function _scopedAssetsAll(){return DB.digitalAssets||[]}
+
+function renderAssets(root){
+  const tab=state.assetTab||'material';
+  const f=state.assetFilter||{q:'',tag:'all'};
+  const all=_scopedAssets();
+  const allTags=[...new Set(all.flatMap(a=>a.tags||[]))].sort();
+  const list=all.filter(a=>{
+    if(a.type!==tab)return false;
+    if(f.q){const q=f.q.toLowerCase();if(!(`${a.name} ${a.description||''} ${(a.tags||[]).join(' ')}`).toLowerCase().includes(q))return false}
+    if(f.tag!=='all'&&!(a.tags||[]).includes(f.tag))return false;
+    return true;
+  }).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+  const tabBtn=(id,lbl,n,ic)=>`<button class="${tab===id?'active':''}" onclick="assetSetTab('${id}')">${ic} ${lbl} <span class="muted" style="font-weight:500;margin-left:4px">${n}</span></button>`;
+  const counts=Object.fromEntries(ASSET_TYPES.map(t=>[t.id, all.filter(a=>a.type===t.id).length]));
+  root.innerHTML=`
+    <div class="page-head">
+      <div><div class="page-title">Digital Assets</div><div class="page-sub">${all.length} asset${all.length===1?'':'s'} en la biblioteca compartida</div></div>
+      <div class="flex ac gap-s">
+        <div class="map-toggle">${ASSET_TYPES.map(t=>tabBtn(t.id,t.label,counts[t.id]||0,t.icon)).join('')}</div>
+        <button class="btn primary" onclick="modalAsset(null,'${tab}')">+ Subir asset</button>
+      </div>
+    </div>
+    <div class="card mt-m">
+      <div class="hd flex jb ac" style="flex-wrap:wrap;gap:10px">
+        <h3>${assetTypeMeta(tab).label} · ${list.length} de ${counts[tab]||0}</h3>
+        <div class="flex ac gap-s" style="flex-wrap:wrap">
+          <input type="search" placeholder="Buscar…" value="${f.q.replace(/"/g,'&quot;')}" oninput="assetSetFilter('q',this.value)" style="min-width:200px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);font-size:12.5px" />
+          <select onchange="assetSetFilter('tag',this.value)" style="padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);font-size:12.5px">
+            <option value="all">Todos los tags</option>
+            ${allTags.map(t=>`<option value="${t}" ${f.tag===t?'selected':''}>${t}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="bd">
+        ${list.length?`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px">${list.map(a=>assetCard(a)).join('')}</div>`:'<div class="empty">Aún no hay assets en esta categoría.</div>'}
+      </div>
+    </div>
+  `;
+}
+function assetCard(a){
+  const meta=assetTypeMeta(a.type);
+  const up=a.createdBy?findConsultant(a.createdBy):null;
+  const tags=(a.tags||[]).slice(0,3).map(t=>`<span class="tag" style="font-size:9.5px">${t}</span>`).join('');
+  return `<div class="card click" onclick="openAsset('${a.id}')" style="cursor:pointer;display:flex;flex-direction:column;gap:8px;padding:14px">
+    <div style="font-size:32px;line-height:1">${meta.icon}</div>
+    <div class="sb" style="color:var(--ink);font-size:13.5px;line-height:1.3">${a.name}</div>
+    ${a.description?`<div class="muted" style="font-size:11.5px;line-height:1.4;max-height:34px;overflow:hidden">${a.description}</div>`:''}
+    ${tags?`<div class="flex gap-xs" style="flex-wrap:wrap">${tags}</div>`:''}
+    <div class="flex jb ac" style="margin-top:auto;font-size:11px;color:var(--muted)">
+      ${up?`<span>${up.name.split(' ')[0]}</span>`:'<span>—</span>'}
+      <span>${fmtBytes(a.fileSizeBytes)}</span>
+    </div>
+  </div>`;
+}
+function assetSetTab(t){state.assetTab=t;render()}
+function assetSetFilter(k,v){state.assetFilter[k]=v;render()}
+
+function openAsset(id){
+  const a=(DB.digitalAssets||[]).find(x=>x.id===id);if(!a)return;
+  const meta=assetTypeMeta(a.type);
+  const up=a.createdBy?findConsultant(a.createdBy):null;
+  const canEdit=isAdmin()||(up&&up.id===DB.currentUserId);
+  drawerHd.innerHTML=`<div class="flex gap-m ac"><div style="font-size:36px">${meta.icon}</div><div><h2>${a.name}</h2><div class="meta"><span class="tag gray">${meta.label}</span> · ${fmtBytes(a.fileSizeBytes)}${up?' · subido por '+up.name:''}</div></div></div><div class="flex gap-s ac">${canEdit?`<button class="btn sm outline" onclick="modalAsset('${a.id}')" title="Editar asset">✎ Editar</button>`:''}<button class="drawer-close" onclick="closeDrawer()">✕</button></div>`;
+  drawerBody.innerHTML=`
+    ${a.description?`<div class="card"><div class="bd"><div style="white-space:pre-wrap;font-size:13px;line-height:1.5">${a.description}</div></div></div>`:''}
+    <div class="field-grid">
+      <div class="field"><label>Tipo</label><div class="v">${meta.icon} ${meta.label}</div></div>
+      <div class="field"><label>Tamaño</label><div class="v">${fmtBytes(a.fileSizeBytes)}</div></div>
+      <div class="field"><label>MIME</label><div class="v">${a.mimeType||'—'}</div></div>
+      <div class="field"><label>Subido</label><div class="v">${a.createdAt?fmtDate(a.createdAt.slice(0,10)):'—'}</div></div>
+      <div class="field" style="grid-column:span 2"><label>Tags</label><div class="v">${(a.tags||[]).map(t=>`<span class="tag" style="margin-right:4px">${t}</span>`).join('')||'<span class="muted">—</span>'}</div></div>
+    </div>
+    <div class="flex gap-s" style="margin-top:14px">
+      ${a.filePath?`<button class="btn primary" onclick="downloadAsset('${a.id}')">⬇ Descargar</button>`:'<span class="muted">Sin archivo asociado.</span>'}
+      ${canEdit&&isAdmin()?`<button class="btn outline" style="color:#B91C1C;border-color:#FCA5A5" onclick="deleteAsset('${a.id}')">Eliminar</button>`:''}
+    </div>
+  `;
+  openDrawer();
+}
+
+async function downloadAsset(id){
+  const a=(DB.digitalAssets||[]).find(x=>x.id===id);if(!a||!a.filePath){alert('Asset sin archivo');return}
+  if(!window.sb){alert('Supabase no disponible');return}
+  try{
+    const {data,error}=await sb.storage.from('digital-assets').createSignedUrl(a.filePath,3600);
+    if(error)throw error;
+    window.open(data.signedUrl,'_blank');
+  }catch(e){
+    console.warn('signed url:',e);
+    alert('No se pudo generar el enlace de descarga: '+(e.message||e));
+  }
+}
+
+function modalAsset(id,defaultType){
+  const e=id?(DB.digitalAssets||[]).find(x=>x.id===id)||null:null;
+  const type=e?e.type:(defaultType||'material');
+  const tags=e?(e.tags||[]).join(', '):'';
+  shell(e?'Editar asset — '+e.name:'Subir asset',`
+    <div class="field"><label>Nombre</label><input id="f_name" value="${(e?e.name:'').replace(/"/g,'&quot;')}" placeholder="Pitch deck Q1 2026" /></div>
+    <div class="field"><label>Tipo</label><select id="f_type">${ASSET_TYPES.map(t=>`<option value="${t.id}" ${t.id===type?'selected':''}>${t.icon} ${t.label}</option>`).join('')}</select></div>
+    <div class="field"><label>Descripción</label><textarea id="f_desc" rows="3" placeholder="Para qué sirve, cuándo usarlo…">${e?(e.description||''):''}</textarea></div>
+    <div class="field"><label>Tags <span class="muted" style="font-size:11px;font-weight:400">· separados por coma</span></label><input id="f_tags" value="${tags.replace(/"/g,'&quot;')}" placeholder="pitch, hospitality, 2026" /></div>
+    ${e?`<div class="muted" style="font-size:11.5px">Archivo actual: ${e.filePath?e.filePath.split('/').pop():'—'} · ${fmtBytes(e.fileSizeBytes)}</div><div class="field"><label>Reemplazar archivo (opcional)</label><input id="f_file" type="file" /></div>`:`<div class="field"><label>Archivo</label><input id="f_file" type="file" /></div>`}
+  `,()=>{
+    const name=$('#f_name').value.trim();if(!name){alert('Nombre requerido');return false}
+    const type=$('#f_type').value;
+    const desc=$('#f_desc').value.trim();
+    const tagsArr=$('#f_tags').value.split(',').map(s=>s.trim()).filter(Boolean);
+    const fileEl=$('#f_file');
+    const file=fileEl&&fileEl.files&&fileEl.files[0];
+    if(!e&&!file){alert('Selecciona un archivo para subir');return false}
+    /* Hacemos el guardado async, fuera del flujo síncrono de shell */
+    _saveAsset(e, {name,type,description:desc,tags:tagsArr}, file).catch(err=>{
+      console.warn('save asset:',err);
+      alert('Error al guardar el asset: '+(err.message||err));
+    });
+    return true;
+  });
+}
+
+async function _saveAsset(existing, payload, file){
+  let filePath=existing?existing.filePath:null;
+  let fileSize=existing?existing.fileSizeBytes:0;
+  let mime=existing?existing.mimeType:'';
+  if(file){
+    if(!window.sb){alert('Supabase no disponible para subir archivos');throw new Error('no sb')}
+    const safeName=(file.name||'asset').replace(/[^A-Za-z0-9._-]+/g,'_');
+    const code=existing?existing.id:('da'+Date.now());
+    const path=`${code}/${Date.now()}_${safeName}`;
+    const {error}=await sb.storage.from('digital-assets').upload(path,file,{contentType:file.type||'application/octet-stream',upsert:false});
+    if(error)throw error;
+    filePath=path;fileSize=file.size;mime=file.type||'';
+  }
+  if(existing){
+    Object.assign(existing,payload,{filePath,fileSizeBytes:fileSize,mimeType:mime});
+    logAudit('update','asset',existing.id,'Asset editado');
+  }else{
+    const a={id:uid('da'),...payload,filePath,fileSizeBytes:fileSize,mimeType:mime,createdBy:DB.currentUserId,createdAt:new Date().toISOString(),_isDemo:false};
+    if(!Array.isArray(DB.digitalAssets))DB.digitalAssets=[];
+    DB.digitalAssets.push(a);
+    logAudit('create','asset',a.id,'Asset subido');
+  }
+  saveDB();render();
+}
+
+async function deleteAsset(id){
+  if(!isAdmin()){alert('Solo el admin puede borrar assets');return}
+  const a=(DB.digitalAssets||[]).find(x=>x.id===id);if(!a)return;
+  if(!confirm(`Eliminar "${a.name}"? Esta acción es irreversible.`))return;
+  if(a.filePath&&window.sb){
+    try{ await sb.storage.from('digital-assets').remove([a.filePath]) }catch(e){ console.warn('remove file:',e) }
+  }
+  if(window.sb&&a._supaId){
+    try{ await sb.from('digital_assets').delete().eq('id',a._supaId) }catch(e){ console.warn('delete row:',e) }
+  }
+  DB.digitalAssets=DB.digitalAssets.filter(x=>x.id!==id);
+  logAudit('delete','asset',id,'Asset eliminado');
+  closeDrawer();saveDB();render();
+}
 
 /* boot */
 state.authed=false;
