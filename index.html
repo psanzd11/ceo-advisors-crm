@@ -5255,7 +5255,7 @@ function openClient(id){
   const acts=(isCEO()?DB.activities:scopedActivities()).filter(a=>a.clientId===id).sort((a,b)=>b.date.localeCompare(a.date));
   const openDealsV=deals.filter(d=>d.stage!=='won'&&d.stage!=='lost').reduce((s,d)=>s+d.amount,0);
   const _h=clientHealth(c);
-  drawerHd.innerHTML=`<div class="flex gap-m ac"><div class="pill-avatar" style="width:46px;height:46px;font-size:15px">${initials(c.name)}</div><div><h2>${c.name} <span class="tier-dot" style="background:${_h.tier.color}" title="${_h.tier.label}"></span></h2><div class="meta">${c.city?c.city+' · ':''}${c.country} · <span class="muted">${_h.tier.label}, cadencia ${_h.cadenceDays}d</span> ${healthBadge(_h,'lg')}</div></div></div><button class="drawer-close" onclick="closeDrawer()">✕</button>`;
+  drawerHd.innerHTML=`<div class="flex gap-m ac"><div class="pill-avatar" style="width:46px;height:46px;font-size:15px">${initials(c.name)}</div><div><h2>${c.name} <span class="tier-dot" style="background:${_h.tier.color}" title="${_h.tier.label}"></span></h2><div class="meta">${c.city?c.city+' · ':''}${c.country} · <span class="muted">${_h.tier.label}, cadencia ${_h.cadenceDays}d</span> ${healthBadge(_h,'lg')}</div></div></div><div class="flex gap-s ac"><button class="btn sm outline" onclick="modalClient({},findClient('${c.id}'))" title="Editar cliente">✎ Editar</button><button class="drawer-close" onclick="closeDrawer()">✕</button></div>`;
   const coChips=cos.length?`<div class="co-chips">${cos.map(co=>`<button class="co-chip" onclick="openCompany('${co.id}')" title="${co.industry} · ${fmtMoney(co.netWorth)}"><span class="pill-avatar c" style="width:20px;height:20px;font-size:9px">${initials(co.name)}</span><span>${co.name}</span><span class="muted" style="font-size:11px;font-weight:500">${co.industry}</span></button>`).join('')}<button class="co-chip add" onclick="openNew('company',{clientId:'${c.id}'})" title="Añadir empresa">+</button></div>`:`<div class="co-chips"><button class="co-chip add" onclick="openNew('company',{clientId:'${c.id}'})">+ Empresa vinculada</button></div>`;
   drawerBody.innerHTML=`
     ${coChips}
@@ -5297,7 +5297,7 @@ function openCompany(id){
   const myDealsSet=new Set(scopedDeals().map(d=>d.id));
   const deals=DB.deals.filter(d=>d.companyId===id&&(isCEO()||myDealsSet.has(d.id)));
   const acts=(isCEO()?DB.activities:scopedActivities()).filter(a=>a.companyId===id).sort((a,b)=>b.date.localeCompare(a.date));
-  drawerHd.innerHTML=`<div class="flex gap-m ac"><div class="pill-avatar c" style="width:46px;height:46px;font-size:15px">${initials(co.name)}</div><div><h2>${co.name}</h2><div class="meta"><span class="tag gray">${co.industry}</span> · ${co.country} · ${co.employees.toLocaleString()} empleados</div></div></div><button class="drawer-close" onclick="closeDrawer()">✕</button>`;
+  drawerHd.innerHTML=`<div class="flex gap-m ac"><div class="pill-avatar c" style="width:46px;height:46px;font-size:15px">${initials(co.name)}</div><div><h2>${co.name}</h2><div class="meta"><span class="tag gray">${co.industry}</span> · ${co.country} · ${co.employees.toLocaleString()} empleados</div></div></div><div class="flex gap-s ac"><button class="btn sm outline" onclick="modalCompany({},findCompany('${co.id}'))" title="Editar empresa">✎ Editar</button><button class="drawer-close" onclick="closeDrawer()">✕</button></div>`;
   drawerBody.innerHTML=`
     <div class="field-grid">
       <div class="field"><label>Net Worth</label><div class="v sb" style="color:var(--brand)">${fmtMoneyFull(co.netWorth)}</div></div>
@@ -5764,41 +5764,66 @@ function shell(title,inner,onSave){
   $('#saveBtn').addEventListener('click',()=>{if(onSave()){saveDB();closeModal();render()}});
 }
 
-function modalClient(p){
-  /* Campos alineados con la plantilla Excel: Tier (col I) y Assigned Advisor (col J) */
+function modalClient(p,existing){
+  /* F16.1: si existing, modo edición. Campos alineados con la plantilla Excel: Tier (col I) y Assigned Advisor (col J) */
+  p=p||{};
+  const e=existing||null;
   const advisors=DB.consultants.filter(c=>!c.isCEO);
-  shell('Nuevo cliente',`
-    <div class="field"><label>Nombre</label><input id="f_name" value="${p.name||''}" placeholder="Nombre completo" /></div>
-    <div class="row"><div class="field"><label>Email</label><input id="f_email" placeholder="email@dominio.com" /></div><div class="field"><label>Teléfono</label><input id="f_phone" placeholder="+34 ..." /></div></div>
-    <div class="row"><div class="field"><label>País</label><input id="f_country" placeholder="Spain" /></div><div class="field"><label>Ciudad</label><input id="f_city" placeholder="Madrid" /></div></div>
-    <div class="row"><div class="field"><label>Net Worth (USD)</label><input id="f_nw" type="number" placeholder="0" /></div><div class="field"><label>Fuente <span class="muted" style="font-size:11px;font-weight:400">· lead source</span></label><select id="f_src"><option>Referral</option><option>Outbound</option><option>Inbound</option><option>Conference</option><option>Partner</option><option>Other</option></select></div></div>
-    <div class="row"><div class="field"><label>Tier <span class="muted" style="font-size:11px;font-weight:400">· prioridad</span></label><select id="f_tier"><option value="">—</option><option value="A">A · Platinum</option><option value="B">B · Gold</option><option value="C">C · Silver</option><option value="D">D · Standard</option></select></div><div class="field"><label>Asesor asignado</label><select id="f_advisor"><option value="">—</option>${advisors.map(c=>`<option value="${c.id}" ${c.id===DB.currentUserId?'selected':''}>${c.name} · ${c.role}</option>`).join('')}</select></div></div>
-    <div class="field"><label>Notas</label><textarea id="f_notes" rows="3"></textarea></div>`,()=>{
+  const opt=(val,lbl,cur)=>`<option value="${val}" ${cur===val?'selected':''}>${lbl}</option>`;
+  const SRC=['Referral','Outbound','Inbound','Conference','Partner','Other'];
+  shell(e?'Editar cliente — '+e.name:'Nuevo cliente',`
+    <div class="field"><label>Nombre</label><input id="f_name" value="${(e?e.name:(p.name||'')).replace(/"/g,'&quot;')}" placeholder="Nombre completo" /></div>
+    <div class="row"><div class="field"><label>Email</label><input id="f_email" value="${(e?e.email||'':'').replace(/"/g,'&quot;')}" placeholder="email@dominio.com" /></div><div class="field"><label>Teléfono</label><input id="f_phone" value="${(e?e.phone||'':'').replace(/"/g,'&quot;')}" placeholder="+34 ..." /></div></div>
+    <div class="row"><div class="field"><label>País</label><input id="f_country" value="${(e?e.country||'':'').replace(/"/g,'&quot;')}" placeholder="Spain" /></div><div class="field"><label>Ciudad</label><input id="f_city" value="${(e?e.city||'':'').replace(/"/g,'&quot;')}" placeholder="Madrid" /></div></div>
+    <div class="row"><div class="field"><label>Net Worth (USD)</label><input id="f_nw" type="number" value="${e?(e.netWorth||0):''}" placeholder="0" /></div><div class="field"><label>Fuente <span class="muted" style="font-size:11px;font-weight:400">· lead source</span></label><select id="f_src">${SRC.map(s=>opt(s,s,e?e.source:'Referral')).join('')}</select></div></div>
+    <div class="row"><div class="field"><label>Tier <span class="muted" style="font-size:11px;font-weight:400">· prioridad</span></label><select id="f_tier"><option value="" ${e&&!e.tier?'selected':''}>—</option>${['A','B','C','D'].map(t=>opt(t,t+(t==='A'?' · Platinum':t==='B'?' · Gold':t==='C'?' · Silver':' · Standard'),e?e.tier:'')).join('')}</select></div><div class="field"><label>Asesor asignado</label><select id="f_advisor"><option value="">—</option>${advisors.map(c=>`<option value="${c.id}" ${(e?e.assignedAdvisor:DB.currentUserId)===c.id?'selected':''}>${c.name} · ${c.role}</option>`).join('')}</select></div></div>
+    <div class="field"><label>Notas</label><textarea id="f_notes" rows="3">${e?(e.notes||''):''}</textarea></div>`,()=>{
     const name=$('#f_name').value.trim();if(!name){alert('Nombre requerido');return false}
-    /* F5.3: detectar duplicado */
-    const dup=findSimilarName(name, DB.clients);
-    if(dup&&!confirmDuplicate(name,'cliente',dup,openClient))return false;
+    /* F5.3: detectar duplicado sólo al crear, no al editar (un nombre similar ya existente puede ser este mismo cliente) */
+    if(!e){
+      const dup=findSimilarName(name, DB.clients);
+      if(dup&&!confirmDuplicate(name,'cliente',dup,openClient))return false;
+    }
     const nw=Number($('#f_nw').value)||0;
     /* F5.2: auto-tier si vacío */
     const tier=$('#f_tier').value||autoTier(nw);
-    DB.clients.push({id:uid('c'),name,email:$('#f_email').value.trim(),phone:$('#f_phone').value.trim(),country:$('#f_country').value.trim()||'—',city:$('#f_city').value.trim()||'',netWorth:nw,source:$('#f_src').value,tier,assignedAdvisor:$('#f_advisor').value||'',notes:$('#f_notes').value.trim()});
+    const payload={name,email:$('#f_email').value.trim(),phone:$('#f_phone').value.trim(),country:$('#f_country').value.trim()||'—',city:$('#f_city').value.trim()||'',netWorth:nw,source:$('#f_src').value,tier,assignedAdvisor:$('#f_advisor').value||'',notes:$('#f_notes').value.trim()};
+    if(e){
+      Object.assign(e,payload);
+      logAudit('update','client',e.id,'Cliente editado');
+      setTimeout(()=>openClient(e.id),0);
+    }else{
+      DB.clients.push({id:uid('c'),...payload});
+    }
     return true;
   });
 }
-function modalCompany(p){
-  /* Campo alineado con plantilla Excel: Notes (col I) */
-  shell('Nueva empresa',`
-    <div class="field"><label>Nombre</label><input id="f_name" placeholder="Nombre de la empresa" /></div>
-    <div class="row"><div class="field"><label>Industria</label><input id="f_ind" placeholder="Hospitality, Retail…" /></div><div class="field"><label>País</label><input id="f_country" /></div></div>
-    <div class="row"><div class="field"><label>Empleados</label><input id="f_emp" type="number" value="0" /></div><div class="field"><label>Net Worth (USD)</label><input id="f_nw" type="number" value="0" /></div></div>
-    <div class="field"><label>Cliente(s) dueños</label><select id="f_owners" multiple size="5" style="width:100%">${DB.clients.map(c=>`<option value="${c.id}" ${p.clientId===c.id?'selected':''}>${c.name}</option>`).join('')}</select><div class="muted" style="font-size:11px;margin-top:4px">⌘/Ctrl para seleccionar varios</div></div>
-    <div class="field"><label>Web</label><input id="f_web" placeholder="dominio.com" /></div>
-    <div class="field"><label>Notas</label><textarea id="f_notes" rows="3" placeholder="Contexto, historial, particularidades…"></textarea></div>`,()=>{
+function modalCompany(p,existing){
+  /* F16.1: si existing, modo edición. Campo alineado con plantilla Excel: Notes (col I) */
+  p=p||{};
+  const e=existing||null;
+  const ownerIds=e?(e.clientIds||[]):(p.clientId?[p.clientId]:[]);
+  shell(e?'Editar empresa — '+e.name:'Nueva empresa',`
+    <div class="field"><label>Nombre</label><input id="f_name" value="${(e?e.name:'').replace(/"/g,'&quot;')}" placeholder="Nombre de la empresa" /></div>
+    <div class="row"><div class="field"><label>Industria</label><input id="f_ind" value="${(e?e.industry||'':'').replace(/"/g,'&quot;')}" placeholder="Hospitality, Retail…" /></div><div class="field"><label>País</label><input id="f_country" value="${(e?e.country||'':'').replace(/"/g,'&quot;')}" /></div></div>
+    <div class="row"><div class="field"><label>Empleados</label><input id="f_emp" type="number" value="${e?(e.employees||0):0}" /></div><div class="field"><label>Net Worth (USD)</label><input id="f_nw" type="number" value="${e?(e.netWorth||0):0}" /></div></div>
+    <div class="field"><label>Cliente(s) dueños</label><select id="f_owners" multiple size="5" style="width:100%">${DB.clients.map(c=>`<option value="${c.id}" ${ownerIds.includes(c.id)?'selected':''}>${c.name}</option>`).join('')}</select><div class="muted" style="font-size:11px;margin-top:4px">⌘/Ctrl para seleccionar varios</div></div>
+    <div class="field"><label>Web</label><input id="f_web" value="${(e?e.website||'':'').replace(/"/g,'&quot;')}" placeholder="dominio.com" /></div>
+    <div class="field"><label>Notas</label><textarea id="f_notes" rows="3" placeholder="Contexto, historial, particularidades…">${e?(e.notes||''):''}</textarea></div>`,()=>{
     const name=$('#f_name').value.trim();if(!name){alert('Nombre requerido');return false}
-    /* F5.3: detectar duplicado */
-    const dup=findSimilarName(name, DB.companies);
-    if(dup&&!confirmDuplicate(name,'empresa',dup,openCompany))return false;
-    DB.companies.push({id:uid('co'),name,industry:$('#f_ind').value.trim()||'—',country:$('#f_country').value.trim()||'—',employees:Number($('#f_emp').value)||0,netWorth:Number($('#f_nw').value)||0,clientIds:[...$('#f_owners').selectedOptions].map(o=>o.value),website:$('#f_web').value.trim(),notes:$('#f_notes').value.trim()});
+    /* F5.3: detectar duplicado sólo al crear */
+    if(!e){
+      const dup=findSimilarName(name, DB.companies);
+      if(dup&&!confirmDuplicate(name,'empresa',dup,openCompany))return false;
+    }
+    const payload={name,industry:$('#f_ind').value.trim()||'—',country:$('#f_country').value.trim()||'—',employees:Number($('#f_emp').value)||0,netWorth:Number($('#f_nw').value)||0,clientIds:[...$('#f_owners').selectedOptions].map(o=>o.value),website:$('#f_web').value.trim(),notes:$('#f_notes').value.trim()};
+    if(e){
+      Object.assign(e,payload);
+      logAudit('update','company',e.id,'Empresa editada');
+      setTimeout(()=>openCompany(e.id),0);
+    }else{
+      DB.companies.push({id:uid('co'),...payload});
+    }
     return true;
   });
 }
