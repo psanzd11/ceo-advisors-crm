@@ -936,7 +936,7 @@ async function fetchFromSupabase(){
     consultants:c.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,name:x.name,role:x.role,isCEO:x.is_ceo,isAdmin:x.is_admin,email:x.email,region:x.region,bio:x.bio,prefs:x.prefs||{}})),
     clients:cl.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,_isDemo:x.is_demo,name:x.name,email:x.email,phone:x.phone,country:x.country,city:x.city,netWorth:Number(x.net_worth)||0,source:x.source,tier:x.tier,notes:x.notes,comments:x.comments||[],tags:x.tags||[]})),
     companies:co.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,_isDemo:x.is_demo,name:x.name,industry:x.industry,country:x.country,employees:x.employees,netWorth:Number(x.net_worth)||0,website:x.website,clientIds:(x.client_ids||[]).map(u=>cMap.get(u)).filter(Boolean),notes:x.notes,comments:x.comments||[],sourceType:x.source_type||null,sourceRef:x.source_ref?(x.source_type==='client'?(cMap.get(x.source_ref)||null):x.source_type==='consultant'?(uMap.get(x.source_ref)||null):null):null,sourceNote:x.source_note||''})),
-    deals:d.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,_isDemo:x.is_demo,title:x.title,clientId:cMap.get(x.client_id)||null,companyId:coMap.get(x.company_id)||null,type:x.type,stage:x.stage,amount:Number(x.amount)||0,closeDate:x.close_date,splits:(x.splits||[]).map(s=>({u:uMap.get(s.u)||s.u,pct:s.pct})),notes:x.notes,createdAt:x.created_at?x.created_at.slice(0,10):'',comments:x.comments||[],stageHistory:(x.stage_history&&x.stage_history.length)?x.stage_history:[{stage:x.stage,ts:x.created_at?x.created_at.slice(0,10):''}],lostReason:x.lost_reason||null,wonAt:x.won_at||null,lostAt:x.lost_at||null,tags:x.tags||[]})),
+    deals:d.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,_isDemo:x.is_demo,title:x.title,clientId:cMap.get(x.client_id)||null,companyId:coMap.get(x.company_id)||null,type:x.type,stage:x.stage,amount:Number(x.amount)||0,closeDate:x.close_date,splits:(x.splits||[]).map(s=>{/* F16.4: normaliza legacy {u,pct} → {kind:'u',id,pct} */ const kind=s.kind||'u';const rawId=s.kind?s.id:s.u;const codeId=kind==='u'?(uMap.get(rawId)||rawId):kind==='c'?(cMap.get(rawId)||rawId):rawId;return {kind,id:codeId,pct:Number(s.pct)||0}}).filter(s=>s.id),notes:x.notes,createdAt:x.created_at?x.created_at.slice(0,10):'',comments:x.comments||[],stageHistory:(x.stage_history&&x.stage_history.length)?x.stage_history:[{stage:x.stage,ts:x.created_at?x.created_at.slice(0,10):''}],lostReason:x.lost_reason||null,wonAt:x.won_at||null,lostAt:x.lost_at||null,tags:x.tags||[]})),
     activities:a.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,_isDemo:x.is_demo,type:x.type,date:x.date,clientId:cMap.get(x.client_id)||null,companyId:coMap.get(x.company_id)||null,dealId:dMap.get(x.deal_id)||null,title:x.title,notes:x.notes,done:!!x.done,createdBy:uMap.get(x.created_by)||null,assignedTo:uMap.get(x.assigned_to)||null})),
     pupilos:p.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,name:x.name,email:x.email,university:x.university,program:x.program,startDate:x.start_date,endDate:x.end_date,mentor:x.mentor,region:x.region,consultantId:x.consultant_id?uMap.get(x.consultant_id):null,leftCompany:x.left_company,leftRole:x.left_role,notes:x.notes,docs:x.docs||[]})),
     digitalAssets:da.data.map(x=>({id:x.code,_supaId:x.id,_supaUpdatedAt:x.updated_at,_isDemo:x.is_demo,name:x.name,type:x.type,filePath:x.file_path,fileSizeBytes:Number(x.file_size_bytes)||0,mimeType:x.mime_type||'',description:x.description||'',tags:x.tags||[],createdBy:x.created_by?uMap.get(x.created_by):null,createdAt:x.created_at})),
@@ -1194,7 +1194,7 @@ function _supaToRow(table, x){
       company_id:_supaResolveUuid('co',x.companyId),
       type, stage, amount:Number(x.amount)||0,
       close_date:x.closeDate||null,
-      splits:(x.splits||[]).map(s=>({u:_supaResolveUuid('u',s.u), pct:Number(s.pct)||0})).filter(s=>s.u),
+      splits:(x.splits||[]).map(s=>{const kind=s.kind||'u';const code=s.kind?s.id:s.u;const uuid=kind==='u'?_supaResolveUuid('u',code):kind==='c'?_supaResolveUuid('c',code):null;return uuid?{kind,id:uuid,pct:Number(s.pct)||0}:null}).filter(Boolean),
       notes:x.notes||'',
       comments: Array.isArray(x.comments)?x.comments:[],
       stage_history: Array.isArray(x.stageHistory)?x.stageHistory:[],
@@ -1688,6 +1688,17 @@ const MIGRATIONS = [
     if(!Array.isArray(d.digitalAssets))d.digitalAssets=[];
     return d;
   }},
+  {to:7, fn:d=>{
+    /* F16.4: normaliza deals.splits a {kind,id,pct} en localStorage */
+    (d.deals||[]).forEach(x=>{
+      if(!Array.isArray(x.splits))return;
+      x.splits=x.splits.map(s=>{
+        if(s && s.kind) return s;
+        return {kind:'u', id: s && s.u || '', pct: Number(s && s.pct)||0};
+      }).filter(s=>s.id);
+    });
+    return d;
+  }},
 ];
 function applyMigrations(d){
   if(!d)return d;
@@ -1862,7 +1873,7 @@ function addComment(entityType, entityId, text){
   mentions.forEach(uId=>addNotification(uId,'mention',{entityType,entityId,commentId:c.id,snippet:text.slice(0,140)}));
   /* notificar también al "owner" del deal/cliente si no soy yo y no está ya en menciones */
   if(entityType==='deal'){
-    (e.splits||[]).forEach(sp=>{if(sp.u!==DB.currentUserId && !mentions.includes(sp.u))addNotification(sp.u,'comment',{entityType,entityId,snippet:text.slice(0,140)})});
+    (e.splits||[]).forEach(sp=>{if(sp.kind==='u'&&sp.id!==DB.currentUserId && !mentions.includes(sp.id))addNotification(sp.id,'comment',{entityType,entityId,snippet:text.slice(0,140)})});
   }
   logAudit('comment',entityType,entityId,text.slice(0,140));
   saveDB();
@@ -1972,7 +1983,7 @@ const isAdmin=()=>{const u=currentUser();return !!(u&&(u.isCEO||u.isAdmin))};
 /* F15.3e: toggle Ocultar demo — wrappea scoped helpers para filtrar _isDemo */
 const isDemoHidden=()=>{try{return localStorage.getItem('crm_hide_demo')==='1'}catch(e){return false}};
 const _notDemo=x=>!x._isDemo;
-const _rawScopedDeals=()=>isCEO()?DB.deals:DB.deals.filter(d=>(d.splits||[]).some(sp=>sp.u===DB.currentUserId));
+const _rawScopedDeals=()=>isCEO()?DB.deals:DB.deals.filter(d=>(d.splits||[]).some(sp=>sp.kind==='u'&&sp.id===DB.currentUserId));
 const scopedDeals=()=>isDemoHidden()?_rawScopedDeals().filter(_notDemo):_rawScopedDeals();
 const scopedClientIdSet=()=>{const s=new Set();scopedDeals().forEach(d=>{if(d.clientId)s.add(d.clientId)});return s};
 const scopedCompanyIdSet=()=>{const s=new Set();scopedDeals().forEach(d=>{if(d.companyId)s.add(d.companyId)});return s};
@@ -2679,7 +2690,7 @@ function renderFunnelChart(){
   const metric=state.funnelMetric==='amt'?'amt':'n';
   let src=scopedDeals();
   if(typeFilter!=='all')src=src.filter(d=>d.type===typeFilter);
-  if(consFilter!=='all')src=src.filter(d=>(d.splits||[]).some(sp=>sp.u===consFilter));
+  if(consFilter!=='all')src=src.filter(d=>(d.splits||[]).some(sp=>sp.kind==='u'&&sp.id===consFilter));
   const data=stages.map(s=>{const list=src.filter(d=>d.stage===s.id);return {id:s.id,label:s.label,n:list.length,amt:list.reduce((a,d)=>a+d.amount,0)}});
   const valOf=d=>metric==='amt'?d.amt:d.n;
   const maxV=Math.max(1,...data.map(valOf));
@@ -2731,7 +2742,7 @@ function openFunnelStage(stageId){
   const typeId=state.funnelType||'all';
   const consId=isCEO()?(state.funnelConsultant||'all'):'all';
   const stage=PIPELINE_STAGES.find(s=>s.id===stageId);if(!stage)return;
-  const deals=scopedDeals().filter(d=>d.stage===stageId&&(typeId==='all'||d.type===typeId)&&(consId==='all'||(d.splits||[]).some(sp=>sp.u===consId)));
+  const deals=scopedDeals().filter(d=>d.stage===stageId&&(typeId==='all'||d.type===typeId)&&(consId==='all'||(d.splits||[]).some(sp=>sp.kind==='u'&&sp.id===consId)));
   const total=deals.reduce((s,d)=>s+d.amount,0);
   const typeLbl=typeId==='all'?'Todos los tipos':(DEAL_TYPES.find(t=>t.id===typeId)?.label||'');
   const consLbl=consId==='all'?'':' · '+(findConsultant(consId)?.name||'');
@@ -3386,7 +3397,10 @@ function stagePill(s){if(!s)return'';const m={prospect:'gray',qualified:'blue',p
 function filterPipeline(id){state.pipelineFilter=id;render()}
 function splitAvatars(splits){
   if(!splits||!splits.length)return '<span class="muted">—</span>';
-  return `<div class="splits" style="display:flex">${splits.map(sp=>{const c=findConsultant(sp.u);if(!c)return'';return `<div class="a" title="${c.name} · ${sp.pct}%" style="background:${CONSULTANT_COLORS[c.id]};width:22px;height:22px;border-radius:50%;border:2px solid var(--surface);font-size:9.5px;font-weight:700;color:#fff;display:grid;place-items:center;margin-left:-6px">${initials(c.name)}</div>`}).join('')}</div>`;
+  return `<div class="splits" style="display:flex">${splits.map(sp=>{
+    if(sp.kind==='c'){const cl=findClient(sp.id);if(!cl)return'';return `<div class="a" title="${cl.name} · ${sp.pct}% (cliente)" style="background:linear-gradient(135deg,#D4A574,#B97F45);width:22px;height:22px;border-radius:50%;border:2px solid var(--surface);font-size:9.5px;font-weight:700;color:#fff;display:grid;place-items:center;margin-left:-6px">${initials(cl.name)}</div>`}
+    const c=findConsultant(sp.id);if(!c)return'';return `<div class="a" title="${c.name} · ${sp.pct}%" style="background:${CONSULTANT_COLORS[c.id]};width:22px;height:22px;border-radius:50%;border:2px solid var(--surface);font-size:9.5px;font-weight:700;color:#fff;display:grid;place-items:center;margin-left:-6px">${initials(c.name)}</div>`
+  }).join('')}</div>`;
 }
 function renderPipeline(deals){
   $('#pipeline').innerHTML=PIPELINE_STAGES.map(s=>{
@@ -3402,7 +3416,7 @@ function dealCardHtml(d){
     <div class="t">${d.title}</div>
     <div class="c">${c?c.name:''}${co?' · '+co.name:''}</div>
     <div class="row"><span class="tag ${t.color}" style="font-size:10.5px">${t.label}</span><span class="amt">${fmtMoney(d.amount)}</span></div>
-    <div class="row" style="margin-top:4px"><div class="splits" style="display:flex">${(d.splits||[]).map(sp=>{const cc=findConsultant(sp.u);if(!cc)return'';return `<div class="a" title="${cc.name} · ${sp.pct}%" style="background:${CONSULTANT_COLORS[cc.id]};width:20px;height:20px;border-radius:50%;border:2px solid var(--surface);font-size:9px;font-weight:700;color:#fff;display:grid;place-items:center;margin-left:-6px">${initials(cc.name)}</div>`}).join('')}</div>${ageBadge}</div>
+    <div class="row" style="margin-top:4px"><div class="splits" style="display:flex">${(d.splits||[]).map(sp=>{if(sp.kind==='c'){const cl=findClient(sp.id);if(!cl)return'';return `<div class="a" title="${cl.name} · ${sp.pct}% (cliente)" style="background:linear-gradient(135deg,#D4A574,#B97F45);width:20px;height:20px;border-radius:50%;border:2px solid var(--surface);font-size:9px;font-weight:700;color:#fff;display:grid;place-items:center;margin-left:-6px">${initials(cl.name)}</div>`} const cc=findConsultant(sp.id);if(!cc)return'';return `<div class="a" title="${cc.name} · ${sp.pct}%" style="background:${CONSULTANT_COLORS[cc.id]};width:20px;height:20px;border-radius:50%;border:2px solid var(--surface);font-size:9px;font-weight:700;color:#fff;display:grid;place-items:center;margin-left:-6px">${initials(cc.name)}</div>`}).join('')}</div>${ageBadge}</div>
   </div>`;
 }
 function wirePipelineDnD(){
@@ -3431,7 +3445,7 @@ function wirePipelineDnD(){
 function renderActivities(root){
   const all=scopedActivities().slice().sort((a,b)=>b.date.localeCompare(a.date));
   /* consultants dropdown = todos los que aparecen como createdBy o en splits de los deals relacionados */
-  const consultantIds=new Set();all.forEach(a=>{if(a.createdBy)consultantIds.add(a.createdBy);if(a.dealId){const d=findDeal(a.dealId);(d?.splits||[]).forEach(sp=>consultantIds.add(sp.u))}});
+  const consultantIds=new Set();all.forEach(a=>{if(a.createdBy)consultantIds.add(a.createdBy);if(a.dealId){const d=findDeal(a.dealId);(d?.splits||[]).forEach(sp=>{if(sp.kind==='u')consultantIds.add(sp.id)})}});
   const consultantOpts=[...consultantIds].map(id=>findConsultant(id)).filter(Boolean);
   const f=state.actFilter;
   const now=new Date();const weekAgo=new Date(now.getTime()-7*864e5);const monthAgo=new Date(now.getTime()-30*864e5);
@@ -3626,7 +3640,8 @@ function consultantStats(){
   return DB.consultants.filter(c=>!c.isCEO).map(c=>{
     let nDeals=0,nWon=0,nLost=0,pipelineCredit=0,wonCredit=0;
     DB.deals.forEach(d=>{
-      const sp=(d.splits||[]).find(x=>x.u===c.id);if(!sp)return;
+      /* F16.4: solo cuenta splits de tipo consultor */
+      const sp=(d.splits||[]).find(x=>x.kind==='u'&&x.id===c.id);if(!sp)return;
       if(!dealInPeriod(d,w))return;
       const credit=d.amount*sp.pct/100;
       nDeals++;
@@ -3648,7 +3663,8 @@ function consultantRichStats(){
     const stageBreakdown={prospect:0,qualified:0,proposal:0,negotiation:0};
     const typeBreakdown={sale:0,finance:0,expand:0,advise:0,wealth:0};
     DB.deals.forEach(d=>{
-      const sp=(d.splits||[]).find(x=>x.u===c.id);if(!sp)return;
+      /* F16.4: solo cuenta splits de tipo consultor */
+      const sp=(d.splits||[]).find(x=>x.kind==='u'&&x.id===c.id);if(!sp)return;
       if(!dealInPeriod(d,w))return;
       const credit=d.amount*sp.pct/100;
       nDeals++;
@@ -3753,9 +3769,9 @@ function conSeriesValues(consultantId,metric,buckets){
   return buckets.map(b=>{
     let v=0;
     if(metric==='wonCredit'){
-      DB.deals.forEach(d=>{if(d.stage!=='won'||!d.closeDate)return;const sp=(d.splits||[]).find(x=>x.u===consultantId);if(!sp)return;const dt=new Date(d.closeDate);if(dt<b.from||dt>=b.to)return;v+=d.amount*sp.pct/100});
+      DB.deals.forEach(d=>{if(d.stage!=='won'||!d.closeDate)return;const sp=(d.splits||[]).find(x=>x.kind==='u'&&x.id===consultantId);if(!sp)return;const dt=new Date(d.closeDate);if(dt<b.from||dt>=b.to)return;v+=d.amount*sp.pct/100});
     } else if(metric==='pipelineCredit'){
-      DB.deals.forEach(d=>{if(d.stage==='won'||d.stage==='lost'||!d.createdAt)return;const sp=(d.splits||[]).find(x=>x.u===consultantId);if(!sp)return;const dt=new Date(d.createdAt);if(dt<b.from||dt>=b.to)return;v+=d.amount*sp.pct/100});
+      DB.deals.forEach(d=>{if(d.stage==='won'||d.stage==='lost'||!d.createdAt)return;const sp=(d.splits||[]).find(x=>x.kind==='u'&&x.id===consultantId);if(!sp)return;const dt=new Date(d.createdAt);if(dt<b.from||dt>=b.to)return;v+=d.amount*sp.pct/100});
     } else if(metric==='actN'){
       (DB.activities||[]).forEach(a=>{const dt=new Date(a.date);if(dt<b.from||dt>=b.to)return;if(activityConsultants(a).some(x=>x.id===consultantId))v++});
     }
@@ -4323,7 +4339,7 @@ function commissionStats(){
   return DB.consultants.filter(c=>!c.isCEO).map(c=>{
     let paid=0,pending=0,ytdPaid=0,byType={},bestDeal=null;
     DB.deals.forEach(d=>{
-      const sp=(d.splits||[]).find(x=>x.u===c.id);if(!sp)return;
+      const sp=(d.splits||[]).find(x=>x.kind==='u'&&x.id===c.id);if(!sp)return;
       const credit=d.amount*sp.pct/100;const comm=credit*rate;
       if(d.stage==='won'){
         paid+=comm;
@@ -5402,7 +5418,17 @@ function openDeal(id){
       <div class="hd"><h3>Splits de comisión</h3><button class="btn sm ghost" onclick="editSplits('${d.id}')">Editar</button></div>
       <div class="bd">
         <div style="display:flex;flex-direction:column;gap:8px">
-          ${(d.splits||[]).map(sp=>{const cc=findConsultant(sp.u);if(!cc)return'';const credit=d.amount*sp.pct/100;return `<div class="flex ac jb" style="padding:8px 10px;background:var(--surface-2);border-radius:8px;cursor:pointer" onclick="openConsultant('${cc.id}')">
+          ${(d.splits||[]).map(sp=>{
+            const credit=d.amount*sp.pct/100;
+            if(sp.kind==='c'){
+              const cl=findClient(sp.id);if(!cl)return'';
+              return `<div class="flex ac jb" style="padding:8px 10px;background:var(--surface-2);border-radius:8px;cursor:pointer" onclick="openClient('${cl.id}')">
+                <div class="flex ac gap-m"><div class="pill-avatar c" style="width:32px;height:32px;font-size:11px">${initials(cl.name)}</div><div><div class="sb" style="color:var(--ink)">${cl.name}</div><div class="muted" style="font-size:12px">Cliente</div></div></div>
+                <div style="text-align:right"><div class="sb" style="color:var(--ink);font-variant-numeric:tabular-nums">${sp.pct}%</div><div class="muted" style="font-size:12px">Revenue ${fmtMoney(credit)}</div></div>
+              </div>`;
+            }
+            const cc=findConsultant(sp.id);if(!cc)return'';
+            return `<div class="flex ac jb" style="padding:8px 10px;background:var(--surface-2);border-radius:8px;cursor:pointer" onclick="openConsultant('${cc.id}')">
             <div class="flex ac gap-m">${consultantAvatar(cc,32)}<div><div class="sb" style="color:var(--ink)">${cc.name}</div><div class="muted" style="font-size:12px">${cc.role}</div></div></div>
             <div style="text-align:right"><div class="sb" style="color:var(--ink);font-variant-numeric:tabular-nums">${sp.pct}%</div><div class="muted" style="font-size:12px">Credit ${fmtMoney(credit)}</div></div>
           </div>`}).join('')||'<div class="muted">Sin splits configurados.</div>'}
@@ -5449,7 +5475,7 @@ function editSplits(id){const d=findDeal(id);if(!d)return;modalDeal(d,true)}
 function openConsultant(id){
   const c=findConsultant(id);if(!c)return;
   const stats=consultantStats().find(s=>s.consultantId===id)||{nDeals:0,nWon:0,nLost:0,pipelineCredit:0,wonCredit:0,closing:0};
-  const deals=DB.deals.filter(d=>(d.splits||[]).some(sp=>sp.u===id));
+  const deals=DB.deals.filter(d=>(d.splits||[]).some(sp=>sp.kind==='u'&&sp.id===id));
   const won=deals.filter(d=>d.stage==='won');
   const open=deals.filter(d=>d.stage!=='won'&&d.stage!=='lost');
   drawerHd.innerHTML=`<div class="flex gap-m ac">${consultantAvatar(c,52)}<div><h2>${c.name}</h2><div class="meta">${c.role} · ${c.region}</div></div></div><button class="drawer-close" onclick="closeDrawer()">✕</button>`;
@@ -5471,7 +5497,7 @@ function openConsultant(id){
     <div class="card">
       <div class="hd"><h3>Deals con su split</h3></div>
       <div class="bd p0"><table class="tbl"><thead><tr><th>Deal</th><th>Cliente</th><th>Tipo</th><th>Etapa</th><th style="text-align:right">% split</th><th style="text-align:right">Credit</th></tr></thead><tbody>
-        ${deals.length?deals.map(d=>{const sp=d.splits.find(x=>x.u===id);const t=dealType(d.type),s=stageBy(d.stage);const cc=findClient(d.clientId);return `<tr class="click" onclick="openDeal('${d.id}')"><td class="sb" style="color:var(--ink)">${d.title}</td><td>${cc?cc.name:'—'}</td><td><span class="tag ${t.color}">${t.label}</span></td><td>${stagePill(s)}</td><td class="num" style="text-align:right">${sp.pct}%</td><td class="num sb" style="text-align:right;color:var(--ink)">${fmtMoney(d.amount*sp.pct/100)}</td></tr>`}).join(''):'<tr><td colspan="6"><div class="empty">Sin deals asignados.</div></td></tr>'}
+        ${deals.length?deals.map(d=>{const sp=d.splits.find(x=>x.kind==='u'&&x.id===id);const t=dealType(d.type),s=stageBy(d.stage);const cc=findClient(d.clientId);return `<tr class="click" onclick="openDeal('${d.id}')"><td class="sb" style="color:var(--ink)">${d.title}</td><td>${cc?cc.name:'—'}</td><td><span class="tag ${t.color}">${t.label}</span></td><td>${stagePill(s)}</td><td class="num" style="text-align:right">${sp.pct}%</td><td class="num sb" style="text-align:right;color:var(--ink)">${fmtMoney(d.amount*sp.pct/100)}</td></tr>`}).join(''):'<tr><td colspan="6"><div class="empty">Sin deals asignados.</div></td></tr>'}
       </tbody></table></div>
     </div>`;
   openDrawer();
@@ -5481,7 +5507,7 @@ function openConsultant(id){
 function openKpiDetail(kind){
   const now=new Date(),yrStart=new Date(now.getFullYear(),0,1);
   const rate=(state.commRate||20)/100;
-  const consAvatars=d=>(d.splits||[]).map(sp=>{const cc=findConsultant(sp.u);if(!cc)return'';return `<div title="${cc.name} · ${sp.pct}%" style="background:${CONSULTANT_COLORS[cc.id]};width:22px;height:22px;border-radius:50%;border:2px solid var(--surface);font-size:9px;font-weight:700;color:#fff;display:grid;place-items:center;margin-left:-6px">${initials(cc.name)}</div>`}).join('');
+  const consAvatars=d=>(d.splits||[]).map(sp=>{if(sp.kind==='c'){const cl=findClient(sp.id);if(!cl)return'';return `<div title="${cl.name} · ${sp.pct}% (cliente)" style="background:linear-gradient(135deg,#D4A574,#B97F45);width:22px;height:22px;border-radius:50%;border:2px solid var(--surface);font-size:9px;font-weight:700;color:#fff;display:grid;place-items:center;margin-left:-6px">${initials(cl.name)}</div>`} const cc=findConsultant(sp.id);if(!cc)return'';return `<div title="${cc.name} · ${sp.pct}%" style="background:${CONSULTANT_COLORS[cc.id]};width:22px;height:22px;border-radius:50%;border:2px solid var(--surface);font-size:9px;font-weight:700;color:#fff;display:grid;place-items:center;margin-left:-6px">${initials(cc.name)}</div>`}).join('');
 
   const titles={
     'dash-clients':['Clientes activos','Todos los clientes dentro de tu alcance'],
@@ -5569,7 +5595,7 @@ function openKpiDetail(kind){
   else if(kind==='comm-paid'||kind==='comm-ytd'){
     const ytd=kind==='comm-ytd';
     const won=DB.deals.filter(d=>d.stage==='won'&&(!ytd||(d.closeDate&&new Date(d.closeDate)>=yrStart))).slice().sort((a,b)=>(b.closeDate||'').localeCompare(a.closeDate||''));
-    let total=0;const rows=won.map(d=>{const comm=d.amount*rate;total+=comm;const cl=findClient(d.clientId),t=dealType(d.type);const splitCells=(d.splits||[]).map(sp=>{const cc=findConsultant(sp.u);if(!cc)return'';const credit=d.amount*sp.pct/100,commC=credit*rate;return `<div class="flex ac gap-s" style="padding:3px 0"><div class="pill-avatar" style="width:22px;height:22px;font-size:9px;background:${CONSULTANT_COLORS[cc.id]};color:#fff">${initials(cc.name)}</div><span style="font-size:12px">${cc.name.split(' ')[0]}</span><span class="muted" style="font-size:11.5px;margin-left:auto">${sp.pct}% · ${fmtMoney(commC)}</span></div>`}).join('');return `<tr class="click" onclick="openDeal('${d.id}')"><td>${fmtDate(d.closeDate)}</td><td class="sb">${d.title}</td><td>${cl?cl.name:'—'}</td><td><span class="tag ${t.color}">${t.label}</span></td><td class="num sb" style="text-align:right">${fmtMoney(d.amount)}</td><td class="num sb" style="text-align:right;color:var(--brand)">${fmtMoney(comm)}</td><td style="min-width:180px">${splitCells||'<span class="muted">—</span>'}</td></tr>`});
+    let total=0;const rows=won.map(d=>{const comm=d.amount*rate;total+=comm;const cl=findClient(d.clientId),t=dealType(d.type);const splitCells=(d.splits||[]).map(sp=>{if(sp.kind==='c'){const cl2=findClient(sp.id);if(!cl2)return'';const credit=d.amount*sp.pct/100;return `<div class="flex ac gap-s" style="padding:3px 0"><div class="pill-avatar c" style="width:22px;height:22px;font-size:9px">${initials(cl2.name)}</div><span style="font-size:12px">${cl2.name.split(' ')[0]}</span><span class="muted" style="font-size:11.5px;margin-left:auto">${sp.pct}% · ${fmtMoney(credit)} rev</span></div>`} const cc=findConsultant(sp.id);if(!cc)return'';const credit=d.amount*sp.pct/100,commC=credit*rate;return `<div class="flex ac gap-s" style="padding:3px 0"><div class="pill-avatar" style="width:22px;height:22px;font-size:9px;background:${CONSULTANT_COLORS[cc.id]};color:#fff">${initials(cc.name)}</div><span style="font-size:12px">${cc.name.split(' ')[0]}</span><span class="muted" style="font-size:11.5px;margin-left:auto">${sp.pct}% · ${fmtMoney(commC)}</span></div>`}).join('');return `<tr class="click" onclick="openDeal('${d.id}')"><td>${fmtDate(d.closeDate)}</td><td class="sb">${d.title}</td><td>${cl?cl.name:'—'}</td><td><span class="tag ${t.color}">${t.label}</span></td><td class="num sb" style="text-align:right">${fmtMoney(d.amount)}</td><td class="num sb" style="text-align:right;color:var(--brand)">${fmtMoney(comm)}</td><td style="min-width:180px">${splitCells||'<span class="muted">—</span>'}</td></tr>`});
     body=`
       <div class="kpis" style="grid-template-columns:repeat(3,1fr);margin-bottom:0">
         ${kpi('Total comisiones',fmtMoney(total),won.length+' deals',true,'wallet')}
@@ -5581,7 +5607,7 @@ function openKpiDetail(kind){
   else if(kind==='comm-pending'){
     const open=DB.deals.filter(d=>d.stage!=='won'&&d.stage!=='lost').slice().sort((a,b)=>b.amount-a.amount);
     let total=0,totalWeighted=0;
-    const rows=open.map(d=>{const comm=d.amount*rate;const s=stageBy(d.stage);const weighted=comm*getStageProb(s.id)/100;total+=comm;totalWeighted+=weighted;const cl=findClient(d.clientId),t=dealType(d.type);const splitCells=(d.splits||[]).map(sp=>{const cc=findConsultant(sp.u);if(!cc)return'';const credit=d.amount*sp.pct/100,commC=credit*rate;return `<div class="flex ac gap-s" style="padding:3px 0"><div class="pill-avatar" style="width:22px;height:22px;font-size:9px;background:${CONSULTANT_COLORS[cc.id]};color:#fff">${initials(cc.name)}</div><span style="font-size:12px">${cc.name.split(' ')[0]}</span><span class="muted" style="font-size:11.5px;margin-left:auto">${sp.pct}% · ${fmtMoney(commC)}</span></div>`}).join('');return `<tr class="click" onclick="openDeal('${d.id}')"><td class="sb">${d.title}</td><td>${cl?cl.name:'—'}</td><td>${stagePill(s)}</td><td><span class="tag ${t.color}">${t.label}</span></td><td class="num" style="text-align:right">${fmtMoney(d.amount)}</td><td class="num sb" style="text-align:right;color:var(--brand)">${fmtMoney(comm)}</td><td class="num" style="text-align:right">${fmtMoney(weighted)}</td><td style="min-width:180px">${splitCells||'<span class="muted">—</span>'}</td></tr>`});
+    const rows=open.map(d=>{const comm=d.amount*rate;const s=stageBy(d.stage);const weighted=comm*getStageProb(s.id)/100;total+=comm;totalWeighted+=weighted;const cl=findClient(d.clientId),t=dealType(d.type);const splitCells=(d.splits||[]).map(sp=>{if(sp.kind==='c'){const cl2=findClient(sp.id);if(!cl2)return'';const credit=d.amount*sp.pct/100;return `<div class="flex ac gap-s" style="padding:3px 0"><div class="pill-avatar c" style="width:22px;height:22px;font-size:9px">${initials(cl2.name)}</div><span style="font-size:12px">${cl2.name.split(' ')[0]}</span><span class="muted" style="font-size:11.5px;margin-left:auto">${sp.pct}% · ${fmtMoney(credit)} rev</span></div>`} const cc=findConsultant(sp.id);if(!cc)return'';const credit=d.amount*sp.pct/100,commC=credit*rate;return `<div class="flex ac gap-s" style="padding:3px 0"><div class="pill-avatar" style="width:22px;height:22px;font-size:9px;background:${CONSULTANT_COLORS[cc.id]};color:#fff">${initials(cc.name)}</div><span style="font-size:12px">${cc.name.split(' ')[0]}</span><span class="muted" style="font-size:11.5px;margin-left:auto">${sp.pct}% · ${fmtMoney(commC)}</span></div>`}).join('');return `<tr class="click" onclick="openDeal('${d.id}')"><td class="sb">${d.title}</td><td>${cl?cl.name:'—'}</td><td>${stagePill(s)}</td><td><span class="tag ${t.color}">${t.label}</span></td><td class="num" style="text-align:right">${fmtMoney(d.amount)}</td><td class="num sb" style="text-align:right;color:var(--brand)">${fmtMoney(comm)}</td><td class="num" style="text-align:right">${fmtMoney(weighted)}</td><td style="min-width:180px">${splitCells||'<span class="muted">—</span>'}</td></tr>`});
     body=`
       <div class="kpis" style="grid-template-columns:repeat(3,1fr);margin-bottom:0">
         ${kpi('Comisión si cierran',fmtMoney(total),open.length+' deals abiertos',true,'wallet')}
@@ -5661,11 +5687,11 @@ function activityConsultants(a){
   /* Combina: creador + (si hay deal) splits del deal + consultores del scope cliente/empresa. Ordenados, sin duplicados. */
   const ids=new Map();
   if(a.createdBy)ids.set(a.createdBy,{fromCreator:true});
-  if(a.dealId){const d=findDeal(a.dealId);(d?.splits||[]).forEach(sp=>{const ex=ids.get(sp.u)||{};ex.splitPct=(ex.splitPct||0)+sp.pct;ids.set(sp.u,ex)})}
+  if(a.dealId){const d=findDeal(a.dealId);(d?.splits||[]).forEach(sp=>{if(sp.kind!=='u')return;const ex=ids.get(sp.id)||{};ex.splitPct=(ex.splitPct||0)+sp.pct;ids.set(sp.id,ex)})}
   else if(a.clientId||a.companyId){
     /* Si la actividad no está atada a un deal, enlazamos consultores por deals del cliente/empresa. */
     const rel=DB.deals.filter(d=>(a.clientId&&d.clientId===a.clientId)||(a.companyId&&d.companyId===a.companyId));
-    const tally={};rel.forEach(d=>{(d.splits||[]).forEach(sp=>{tally[sp.u]=(tally[sp.u]||0)+1})});
+    const tally={};rel.forEach(d=>{(d.splits||[]).forEach(sp=>{if(sp.kind==='u')tally[sp.id]=(tally[sp.id]||0)+1})});
     Object.entries(tally).sort((x,y)=>y[1]-x[1]).slice(0,3).forEach(([u])=>{if(!ids.has(u))ids.set(u,{})});
   }
   return [...ids.entries()].map(([u,meta])=>{const c=findConsultant(u);if(!c)return null;return {...c,...meta}}).filter(Boolean);
@@ -5914,19 +5940,39 @@ function modalCompany(p,existing){
   };
 }
 function modalDeal(existing,editingSplitsOnly,preset={}){
-  const splits=existing?JSON.parse(JSON.stringify(existing.splits||[])):[{u:DB.currentUserId,pct:100}];
+  /* F16.4: splits unificados {kind,id,pct}. Backward-compat con legacy {u,pct}. */
+  const initSplits=existing?JSON.parse(JSON.stringify(existing.splits||[])):[{kind:'u',id:DB.currentUserId,pct:100}];
+  const splits=initSplits.map(s=>s.kind?s:{kind:'u',id:s.u,pct:s.pct});
+  const optsFor=(kind,sel)=>{
+    if(kind==='c')return DB.clients.map(c=>`<option value="${c.id}" ${c.id===sel?'selected':''}>${c.name}</option>`).join('');
+    return DB.consultants.map(c=>`<option value="${c.id}" ${c.id===sel?'selected':''}>${c.name} · ${c.role}</option>`).join('');
+  };
   const renderSplits=()=>{
     const total=splits.reduce((s,x)=>s+(+x.pct||0),0);
     const ok=total===100;
     return `${splits.map((sp,i)=>`<div class="split-row">
-      <select onchange="window.__splits[${i}].u=this.value">${DB.consultants.map(c=>`<option value="${c.id}" ${sp.u===c.id?'selected':''}>${c.name} · ${c.role}</option>`).join('')}</select>
+      <select onchange="window.__splitSetKind(${i},this.value)" style="max-width:90px">
+        <option value="u" ${sp.kind==='u'?'selected':''}>Consultor</option>
+        <option value="c" ${sp.kind==='c'?'selected':''}>Cliente</option>
+      </select>
+      <select onchange="window.__splits[${i}].id=this.value">${optsFor(sp.kind,sp.id)}</select>
       <input type="number" min="0" max="100" step="5" value="${sp.pct}" oninput="window.__splits[${i}].pct=+this.value;document.getElementById('splitTotal').className='split-total '+((window.__splits.reduce((s,x)=>s+(+x.pct||0),0)===100)?'ok':'bad');document.getElementById('splitTotalNum').textContent=window.__splits.reduce((s,x)=>s+(+x.pct||0),0)+'%'" />
       <button class="rmv" onclick="window.__splits.splice(${i},1);document.getElementById('splitsBlock').innerHTML=window.__renderSplits()">✕</button>
     </div>`).join('')}
-    <button class="btn sm outline" onclick="window.__splits.push({u:'${DB.consultants[0].id}',pct:0});document.getElementById('splitsBlock').innerHTML=window.__renderSplits()">+ Añadir consultor</button>
+    <div class="flex gap-s" style="margin-top:6px">
+      <button class="btn sm outline" onclick="window.__splits.push({kind:'u',id:'${DB.consultants[0].id}',pct:0});document.getElementById('splitsBlock').innerHTML=window.__renderSplits()">+ Consultor</button>
+      <button class="btn sm outline" onclick="window.__splits.push({kind:'c',id:'${(DB.clients[0]&&DB.clients[0].id)||''}',pct:0});document.getElementById('splitsBlock').innerHTML=window.__renderSplits()">+ Cliente</button>
+    </div>
     <div id="splitTotal" class="split-total ${ok?'ok':'bad'}">Total: <b id="splitTotalNum">${total}%</b> ${ok?'✓':'(debe ser 100%)'}</div>`;
   };
   window.__splits=splits;window.__renderSplits=renderSplits;
+  window.__splitSetKind=(i,k)=>{
+    window.__splits[i].kind=k;
+    /* Resetear id al primero del nuevo tipo si el actual no aplica */
+    const list = k==='c' ? DB.clients : DB.consultants;
+    if(!list.find(x=>x.id===window.__splits[i].id))window.__splits[i].id=list[0]?list[0].id:'';
+    document.getElementById('splitsBlock').innerHTML=window.__renderSplits();
+  };
   const d=existing||{};
   shell(existing?(editingSplitsOnly?'Editar splits — '+existing.title:'Editar deal'):'Nuevo deal',`
     <div class="field"><label>Título</label><input id="f_title" placeholder="Ej: Venta Tanaka Realty" value="${d.title||''}" /></div>
@@ -5935,7 +5981,7 @@ function modalDeal(existing,editingSplitsOnly,preset={}){
     <div class="row"><div class="field"><label>Monto (USD)</label><input id="f_amount" type="number" value="${d.amount||0}" /></div><div class="field"><label>Fecha cierre</label><input id="f_close" type="date" value="${d.closeDate||''}" /></div></div>
     <div class="field"><label>Splits de comisión</label><div id="splitsBlock">${renderSplits()}</div></div>
     <div class="field"><label>Notas</label><textarea id="f_notes" rows="3" placeholder="Contexto del deal, próximos pasos, riesgos…">${d.notes||''}</textarea></div>
-    <div class="muted" style="font-size:11.5px">Un cliente puede tener varios deals del mismo tipo. Si un deal lo trabajan varios consultores, divide la comisión por porcentajes que sumen 100%.</div>
+    <div class="muted" style="font-size:11.5px">Un cliente puede tener varios deals del mismo tipo. Los splits asignan revenue real: consultores reciben crédito de comisión, clientes reciben atribución de revenue. Los porcentajes deben sumar 100%.</div>
   `,()=>{
     const total=window.__splits.reduce((s,x)=>s+(+x.pct||0),0);
     if(total!==100){alert('Los splits deben sumar 100%. Actual: '+total+'%');return false}
@@ -6046,7 +6092,7 @@ function deleteConsultant(id){
   const c=findConsultant(id);if(!c)return;
   if(c.isCEO){alert('No se puede eliminar al CEO.');return}
   if(c.id===DB.currentUserId){alert('No puedes eliminar la cuenta con la que estás conectado.');return}
-  const hasSplits=DB.deals.some(d=>(d.splits||[]).some(sp=>sp.u===id));
+  const hasSplits=DB.deals.some(d=>(d.splits||[]).some(sp=>sp.kind==='u'&&sp.id===id));
   const hasActs=DB.activities.some(a=>a.createdBy===id);
   if(hasSplits||hasActs){
     if(!confirm(c.name+' tiene deals o actividades asociados. Al eliminar se conservarán pero quedarán huérfanos. ¿Continuar?'))return;
@@ -6228,8 +6274,9 @@ $('#btnExportXLSX').addEventListener('click',async()=>{
     const coRows=DB.companies.map(c=>[c.id,c.name,c.industry||'',c.country||'',c.employees||0,c.netWorth||0,c.website||'',(c.clientIds||[]).join(', '),c.notes||'']);
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([coHdr,...coRows]),'Companies');
     // Deals
-    const dHdr=['ID','Title','Client ID','Company ID','Type','Stage','Amount','Expected Close','Created','A1 ID','A1 %','A2 ID','A2 %','A3 ID','A3 %','Notes'];
-    const dRows=DB.deals.map(d=>{const s=d.splits||[];return [d.id,d.title,d.clientId||'',d.companyId||'',d.type||'',d.stage||'',d.amount||0,d.closeDate||'',d.createdAt||'',s[0]?.u||'',s[0]?.pct||'',s[1]?.u||'',s[1]?.pct||'',s[2]?.u||'',s[2]?.pct||'',d.notes||'']});
+    /* F16.4: exportamos kind+id en lugar del legacy 'u'. Split kind: 'u' = consultor, 'c' = cliente */
+    const dHdr=['ID','Title','Client ID','Company ID','Type','Stage','Amount','Expected Close','Created','A1 Kind','A1 ID','A1 %','A2 Kind','A2 ID','A2 %','A3 Kind','A3 ID','A3 %','Notes'];
+    const dRows=DB.deals.map(d=>{const s=d.splits||[];return [d.id,d.title,d.clientId||'',d.companyId||'',d.type||'',d.stage||'',d.amount||0,d.closeDate||'',d.createdAt||'',s[0]?.kind||'',s[0]?.id||'',s[0]?.pct||'',s[1]?.kind||'',s[1]?.id||'',s[1]?.pct||'',s[2]?.kind||'',s[2]?.id||'',s[2]?.pct||'',d.notes||'']});
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([dHdr,...dRows]),'Deals');
     // Activities
     const aHdr=['ID','Type','Date','Client ID','Company ID','Deal ID','Title','Notes','Done','Created By'];
@@ -6674,7 +6721,8 @@ function renderCleanup(root){
   const cliIds=new Set(DB.clients.map(c=>c.id));
   const coIds=new Set(DB.companies.map(c=>c.id));
   const uIds=new Set(DB.consultants.map(c=>c.id));
-  const brokenDeals=DB.deals.filter(d=>(d.clientId&&!cliIds.has(d.clientId))||(d.companyId&&!coIds.has(d.companyId))||(d.splits||[]).some(sp=>!uIds.has(sp.u)));
+  /* F16.4: en splits, sólo verificamos referencias de consultor; las de cliente se validan vs cliIds */
+  const brokenDeals=DB.deals.filter(d=>(d.clientId&&!cliIds.has(d.clientId))||(d.companyId&&!coIds.has(d.companyId))||(d.splits||[]).some(sp=>sp.kind==='u'?!uIds.has(sp.id):sp.kind==='c'?!cliIds.has(sp.id):false));
   const brokenActs=(DB.activities||[]).filter(a=>(a.clientId&&!cliIds.has(a.clientId))||(a.companyId&&!coIds.has(a.companyId))||(a.dealId&&!DB.deals.some(d=>d.id===a.dealId)));
   const brokenPupilos=(DB.pupilos||[]).filter(p=>(p.mentor&&!uIds.has(p.mentor))||(p.consultantId&&!uIds.has(p.consultantId)));
   /* Audit gigante */
@@ -6760,9 +6808,10 @@ function generateAutoReminders(){
     if(!last||!last.ts)return;
     const days=Math.floor((todayMs-new Date(last.ts).getTime())/86400000);
     if(days>=21){
-      /* Notificar a cada advisor del split */
+      /* Notificar a cada advisor del split (sólo consultores; clientes no autentican) */
       (d.splits||[]).forEach(sp=>{
-        added += ensureReminder('deal_stuck_'+d.id+'_'+sp.u, sp.u, 'deal_stuck', {entityType:'deal',entityId:d.id,snippet:d.title+' · '+days+'d en '+d.stage,days})?1:0;
+        if(sp.kind!=='u')return;
+        added += ensureReminder('deal_stuck_'+d.id+'_'+sp.id, sp.id, 'deal_stuck', {entityType:'deal',entityId:d.id,snippet:d.title+' · '+days+'d en '+d.stage,days})?1:0;
       });
     }
   });
@@ -7244,7 +7293,7 @@ function renderExecSummary(root){
   const winRate=(wonYTD.length+lostYTD.length)>0?Math.round(wonYTD.length/(wonYTD.length+lostYTD.length)*100):0;
   /* Top consultores por wonCredit YTD */
   const conStats={};
-  wonYTD.forEach(d=>{(d.splits||[]).forEach(sp=>{const credit=d.amount*(sp.pct||0)/100;conStats[sp.u]=(conStats[sp.u]||0)+credit})});
+  wonYTD.forEach(d=>{(d.splits||[]).forEach(sp=>{if(sp.kind!=='u')return;const credit=d.amount*(sp.pct||0)/100;conStats[sp.id]=(conStats[sp.id]||0)+credit})});
   const topCons=Object.entries(conStats).map(([uid,credit])=>{const c=findConsultant(uid);return c?{c,credit}:null}).filter(Boolean).sort((a,b)=>b.credit-a.credit).slice(0,5);
   /* Pipeline por stage */
   const stages=['prospect','qualified','proposal','negotiation'];
@@ -7456,7 +7505,7 @@ function _supaApplyRealtimeRow(table, row){
   const cMap = new Map((DB.clients||[]).filter(c=>c._supaId).map(c=>[c._supaId,c.id]));
   const coMap = new Map((DB.companies||[]).filter(c=>c._supaId).map(c=>[c._supaId,c.id]));
   const dMap = new Map((DB.deals||[]).filter(c=>c._supaId).map(c=>[c._supaId,c.id]));
-  if(table==='deals') return {id:row.code,_supaId:row.id,_supaUpdatedAt:row.updated_at,_isDemo:row.is_demo,title:row.title,clientId:cMap.get(row.client_id)||null,companyId:coMap.get(row.company_id)||null,type:row.type,stage:row.stage,amount:Number(row.amount)||0,closeDate:row.close_date,splits:(row.splits||[]).map(s=>({u:uMap.get(s.u)||s.u,pct:s.pct})),notes:row.notes,createdAt:row.created_at?row.created_at.slice(0,10):'',comments:row.comments||[],stageHistory:row.stage_history||[],lostReason:row.lost_reason||null,wonAt:row.won_at||null,lostAt:row.lost_at||null,tags:row.tags||[]};
+  if(table==='deals') return {id:row.code,_supaId:row.id,_supaUpdatedAt:row.updated_at,_isDemo:row.is_demo,title:row.title,clientId:cMap.get(row.client_id)||null,companyId:coMap.get(row.company_id)||null,type:row.type,stage:row.stage,amount:Number(row.amount)||0,closeDate:row.close_date,splits:(row.splits||[]).map(s=>{/* F16.4: normaliza legacy {u,pct} → {kind:'u',id,pct} */ const kind=s.kind||'u';const rawId=s.kind?s.id:s.u;const codeId=kind==='u'?(uMap.get(rawId)||rawId):kind==='c'?(cMap.get(rawId)||rawId):rawId;return {kind,id:codeId,pct:Number(s.pct)||0}}).filter(s=>s.id),notes:row.notes,createdAt:row.created_at?row.created_at.slice(0,10):'',comments:row.comments||[],stageHistory:row.stage_history||[],lostReason:row.lost_reason||null,wonAt:row.won_at||null,lostAt:row.lost_at||null,tags:row.tags||[]};
   if(table==='clients') return {id:row.code,_supaId:row.id,_supaUpdatedAt:row.updated_at,_isDemo:row.is_demo,name:row.name,email:row.email,phone:row.phone,country:row.country,city:row.city,netWorth:Number(row.net_worth)||0,source:row.source,tier:row.tier,notes:row.notes,comments:row.comments||[],tags:row.tags||[]};
   if(table==='activities') return {id:row.code,_supaId:row.id,_supaUpdatedAt:row.updated_at,_isDemo:row.is_demo,type:row.type,date:row.date,clientId:cMap.get(row.client_id)||null,companyId:coMap.get(row.company_id)||null,dealId:dMap.get(row.deal_id)||null,title:row.title,notes:row.notes,done:!!row.done,createdBy:uMap.get(row.created_by)||null,assignedTo:uMap.get(row.assigned_to)||null};
   return null;
